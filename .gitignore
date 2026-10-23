@@ -1,0 +1,19 @@
+# Build output
+/build/
+bin/
+*.prg
+*.iq
+*.prg.debug.xml
+# Signing keys and secrets - NEVER commit
+*.der
+*.pem
+*.b64
+developer_key*
+.env
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+# Simulator / SDK scratch
+/.Garmin/
+internal-mir/
