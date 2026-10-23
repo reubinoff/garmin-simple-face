@@ -1,0 +1,81 @@
+name: Build watch face
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs everywhere (also on forks / PRs): needs no Garmin account and no secrets.
+  static-checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: XML files are well-formed
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+          find . -name '*.xml' -not -path './.git/*' -print0 | xargs -0 xmllint --noout
+      - name: Shell scripts parse
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+      - name: No signing keys committed
+        run: |
+          if git ls-files | grep -Ei '\.(der|pem|b64)$|developer_key'; then
+            echo "A developer key file is tracked by git!"; exit 1
+          fi
+
+  build:
+    needs: static-checks
+    runs-on: ubuntu-24.04
+    env:
+      GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+      GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+      CIQ_AGREEMENT_HASH: ${{ vars.CIQ_AGREEMENT_HASH }}
+      CIQ_DEVELOPER_KEY_B64: ${{ secrets.CIQ_DEVELOPER_KEY_B64 }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check required secrets / variables
+        run: |
+          missing=0
+          for v in GARMIN_USERNAME GARMIN_PASSWORD CIQ_AGREEMENT_HASH CIQ_DEVELOPER_KEY_B64; do
+            if [ -z "${!v}" ]; then echo "::error::Missing $v - see README, section 'GitHub Actions'"; missing=1; fi
+          done
+          exit $missing
+
+      # The Connect IQ docs require Java 11 or higher; the SDK was run with Temurin 21 when this project was created.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Install Connect IQ SDK 9.3.0 and the fenix9pro47mm device files
+        run: scripts/install-sdk.sh
+
+      - name: Write developer key (never printed, never uploaded)
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$CIQ_DEVELOPER_KEY_B64" | base64 -d > "$RUNNER_TEMP/keys/developer_key.der"
+          chmod 600 "$RUNNER_TEMP/keys/developer_key.der"
+          echo "CIQ_DEVELOPER_KEY_PATH=$RUNNER_TEMP/keys/developer_key.der" >> "$GITHUB_ENV"
+
+      - name: Build PRG + IQ (strict type check, warnings on)
+        run: scripts/build.sh --out build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: NoirTime-fenix9pro47mm
+          path: |
+            build/NoirTime.prg
+            build/NoirTime.iq
+          if-no-files-found: error
+          retention-days: 90
