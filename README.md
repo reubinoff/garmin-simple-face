@@ -65,18 +65,17 @@ scripts/run-simulator.sh        # builds a debug PRG, starts `connectiq`, runs `
 ```
 Check, and take real screenshots into `docs/screenshots/`:
 1. Time/date/steps centred, nothing cut off by the round edge.
-2. *Settings -> Edit Persistent Storage / Application Settings* (or *File -> Edit Application.Properties*): change `TimeColor`; the face must update.
-3. Low power: *Simulation -> Display Mode -> Low Power* (the sim menu), and **File -> View Screen Heat Map** (burn-in simulation, per the AMOLED FAQ).
-4. 12h/24h: *Settings -> Time Format*.
-5. Set the language to Hebrew and look at the date.
-Menu names are those in the documentation; if a menu differs in your simulator version, follow the simulator's own help.
+2. Change the `TimeColor` application property/setting in the simulator's own settings editor (the docs I used do not name that menu - look in the simulator's menus) and confirm the face updates.
+3. Always-on: switch the simulated display to low power (menu not named in the docs I used) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
+4. 12h/24h: change the simulated time format.
+5. Steps: the docs name **Simulation -> Activity Data** for simulated activity data; check the steps text with 0, 999, 1 000, 12 345 and 100 000+ values.
+6. Set the language to Hebrew and look at the date.
 
 ## 3. Install on your watch (sideload)
 Per the "Your First App" guide: build the PRG (`build/NoirTime.prg`), connect the watch with USB, and copy it to the watch's `GARMIN/APPS` folder. Eject the watch,
-then on the watch choose the face (long-press the watch face -> pick *Noir Time*). The time colour is changed in the Garmin Connect app
-(Connect IQ -> *Noir Time* -> Settings) - **settings only appear in Garmin Connect for apps installed from the store**; sideloaded builds
-use the default (white) unless you change the property in the simulator. Test on the real watch for a day, especially always-on mode
-(the review guidelines require that apps are tested before submission).
+then select *Noir Time* as the watch face using the watch's normal watch-face picker. The Properties/Settings doc says app settings can be changed in the Connect IQ Store app,
+the Garmin Connect app or Garmin Express; whether a **sideloaded** app shows its settings there is not stated in the docs I read - check this on your watch. Test on the real watch for a day, especially always-on mode
+(the review guidelines say apps must be tested before submission).
 
 ## 4. GitHub Actions
 `.github/workflows/build.yml` runs on every push to `main`, on tags `v*`, on PRs, and manually.
