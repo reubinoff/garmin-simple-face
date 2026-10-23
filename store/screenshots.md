@@ -11,5 +11,5 @@ Suggested set:
 3. Always-on (low power) mode.
 4. The settings page in Garmin Connect showing the colour list (phone screenshot).
 
-Tips: use a time without many wide digits (10:08), set steps to e.g. 8432 in the simulator (*Simulation -> Set Activity Monitor Info*), and keep the launcher icon
+Tips: use a time without many wide digits (10:08), set steps to e.g. 8432 in the simulator (*Simulation -> Activity Data*), and keep the launcher icon
 (`resources/drawables/launcher_icon.png`, 65x65) as the store icon source if the form accepts it - larger icon art may be needed (see the form).
