@@ -4,6 +4,7 @@ The store form's exact screenshot dimensions/count are **not documented in the s
 <https://developer.garmin.com/connect-iq/submit-an-app/> and match it.
 
 Take them from the simulator (fenix9pro47mm) or the real watch, never from `docs/mockups/` (those are drawn with a stand-in font and labelled as mockups).
+Real simulator frames are in `docs/screenshots/` (454 x 454 crops; the bezel shows in the corners outside the round screen, mask or crop before uploading if the form wants only the screen).
 
 Suggested set:
 1. Default (white time, Medium), high power, a realistic time such as 10:08, steps in the thousands.

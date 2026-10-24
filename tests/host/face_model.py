@@ -22,6 +22,17 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 RAJDHANI = os.path.join(FONT_DIR, "Rajdhani-Medium.ttf")
 ROBOTO = os.path.join(FONT_DIR, "Roboto-VariableFont_wdth,wght.ttf")
+# Font-accurate mode: CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts (downloaded by the SDK manager with
+# "device download --include-fonts"; Garmin files, never committed). The device's simulator.json maps
+# numberMild/Medium/Hot/ThaiHot to Bionic_Medium.ttf and small/large to Roboto-Regular.ttf.
+DEVICE_FONTS = os.environ.get("CIQ_DEVICE_FONTS")
+if DEVICE_FONTS and os.path.exists(os.path.join(os.path.expanduser(DEVICE_FONTS), "Bionic_Medium.ttf")):
+    RAJDHANI = os.path.join(os.path.expanduser(DEVICE_FONTS), "Bionic_Medium.ttf")
+    ROBOTO = os.path.join(os.path.expanduser(DEVICE_FONTS), "Roboto-Regular.ttf")
+    FONT_SOURCE = "device fonts (Bionic_Medium / Roboto-Regular from the SDK manager)"
+else:
+    DEVICE_FONTS = None
+    FONT_SOURCE = "stand-in fonts (Rajdhani Medium / Roboto, Google Fonts)"
 
 SCREEN = 454  # fēnix 9 Pro 47mm, device reference
 
@@ -158,7 +169,7 @@ class Font:
     @staticmethod
     def _load(path, size):
         f = ImageFont.truetype(path, size)
-        if path == ROBOTO:
+        if path == ROBOTO and not DEVICE_FONTS:
             f.set_variation_by_name("Regular")
         return f
 

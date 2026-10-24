@@ -14,9 +14,12 @@ mkdir -p build
 monkeyc -d "$DEVICE" -f monkey.jungle -o build/NoirTime-test.prg -y "$KEY" -l 3 -w -t
 connectiq &
 SIM=$!
-trap 'kill $SIM 2>/dev/null || true' EXIT
+# connectiq starts bin/simulator as a child; stop both or the simulator keeps the pipe open and the script never ends
+trap 'pkill -P $SIM 2>/dev/null || true; kill $SIM 2>/dev/null || true' EXIT
 sleep "${CIQ_SIM_WAIT:-10}"   # the simulator must be running before monkeydo connects
-monkeydo build/NoirTime-test.prg "$DEVICE" -t | tee build/unit-tests.log
+# monkeydo -t exits 1 even when every test passes (observed with SDK 9.3.0, not documented), so the verdict
+# comes from the printed summary below, not from its exit code.
+monkeydo build/NoirTime-test.prg "$DEVICE" -t | tee build/unit-tests.log || true
 # The simulator prints a summary "PASSED (passed=N, ...)" or "FAILED (...)" (strings in SDK 9.3.0 bin/simulator;
 # the exact layout is not documented). Pass only on a PASSED summary and no FAILED.
 if grep -q "FAILED" build/unit-tests.log || ! grep -q "PASSED" build/unit-tests.log; then

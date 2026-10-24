@@ -46,7 +46,7 @@ Status: VERIFIED-SDK. `scripts/install-sdk.sh` pins `9.3.0` (override with `CIQ_
   tool's own `--help` output (note: the flag is `--agreement-hash`, not `--acceptance-hash` as its README says).
 * Why it matters: you are giving a third-party binary your Garmin credentials in CI. If you do not want that, build locally with the
   official SDK Manager (README, "Option B").
-Status: tool VERIFIED-ON-BOX (runs, help output read). End-to-end use **UNVERIFIED** (needs a Garmin login, gap G-1).
+Status: VERIFIED-ON-BOX end to end (2026-10-24): agreement accepted by hash, login, SDK 9.3.0, `device download -d fenix9pro47mm --include-fonts` (D-23).
 
 ## D-04 `minApiLevel="5.0.0"`
 
@@ -65,7 +65,7 @@ Highest API level among the APIs used (from the API docs, "Since: API Level"):
 
 The device's own API level is stored in the device files (`compiler.json`), which are behind a Garmin login (gap G-1). The compiler checks
 `minApiLevel` against the device and the strict type checker reports use of APIs above it ("Improve typecheck diagnostics when using APIs
-that do not meet the target device's minimum API level" - SDK release notes). Status: VERIFIED-DOC for the number; compatibility with the device **UNVERIFIED until the first build**.
+that do not meet the target device's minimum API level" - SDK release notes). Status: VERIFIED-DOC for the number; compatibility with the device **VERIFIED-SDK**: the device files' `compiler.json` give `connectIQVersion` 6.0.3 (deviceGroup "API level 6.0"), and the strict device build passes (D-23).
 
 ## D-05 App type, manifest shape
 
@@ -132,7 +132,7 @@ Rules (primary sources):
 What the code does in low power: **superseded by D-19** (same size as active mode, outline-only digits, shift + rotating row mask).
 The earlier design (time capped at `NUMBER_MILD` at 60 % brightness, `FONT_XTINY` date/steps) was replaced on the owner's request.
 * `onPartialUpdate` is **not** implemented: the FAQ says per-second partial updates are "no longer allowed" on AMOLED (<https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>).
-Status: rules VERIFIED-DOC; compliance: model estimate in D-19, **measurement on the simulator/watch still open (G-2)**.
+Status: rules VERIFIED-DOC; compliance VERIFIED-ON-BOX in the real simulator (24-Hour burn-in simulation: no burn-in detected, D-23).
 
 ## D-10 Rendering approach
 
@@ -144,7 +144,7 @@ Status: rules VERIFIED-DOC; compliance: model estimate in D-19, **measurement on
 * Colon is fixed at the screen centre; hours are right-aligned to it, minutes left-aligned, so the colon never jumps.
 * Steps are shown as a number only (thousands separator) - design choice, in `NoirLayout.formatSteps()` (`--` when `steps` is null).
 * The vertical position of the colon dots (`fontHeight * 14 %`) assumes the digits are vertically centred in the font box. This is **UNVERIFIED** (gap G-3); check in the simulator.
-Status: API usage VERIFIED-DOC; visual result **UNVERIFIED**.
+Status: API usage VERIFIED-DOC; visual result VERIFIED-ON-BOX in the simulator with the device fonts (`docs/screenshots/`, D-23): colon dots sit centred between the digits, outline glyphs are clean and hollow.
 
 ## D-11 Language / Hebrew
 
@@ -240,12 +240,12 @@ Font heights on the fēnix® 9 Pro 47mm (device reference page): `FONT_LARGE` 71
   The date box uses the sample "Wed 30 Sep" and the steps box "100,000"; a longer localised date could still be wider (G-13).
 * So "Large" means "the largest that fits"; on this screen it may end up the same as Medium - the docs give heights but no glyph widths, so which one wins is not knowable before running (G-13).
 * **Always-on** uses the same font as active mode (owner request, D-19); the 12 px edge margin covers the 8 px AOD shift plus the 3 px maximum outline (tested).
-Status: API VERIFIED-DOC; actual sizes **UNVERIFIED**.
+Status: API VERIFIED-DOC; actual sizes VERIFIED-ON-BOX (D-23; font names from the fit check with the device fonts, which reproduces the real glyph heights): Small = `FONT_NUMBER_MILD`, Medium = `FONT_NUMBER_MEDIUM`, Large = `FONT_NUMBER_HOT` (`FONT_NUMBER_THAI_HOT` does not fit), all three distinct; a long Hebrew date is still open (G-13).
 
 ## D-18 Migration from `TimeColor`
 
 * The old `TimeColor` property is removed; `HourColor` and `MinuteColor` default to its old default (white), so the default face is unchanged.
-* No value migration code: the app has never been published or installed (it has never been compiled, G-1), so no user has a stored `TimeColor`. The docs read do not say
+* No value migration code: the app has never been published or installed on a watch, so no user has a stored `TimeColor`. The docs read do not say
   what happens to stored values of a removed property after an app update, so if this matters later, keep the old key and copy it once (`Properties.getValue`/`setValue`).
 Status: design decision; based on the project state, not on runtime behaviour.
 
@@ -276,7 +276,7 @@ Burn-in protection:
   the host model found pixels on for 10 consecutive minutes (overlapping strokes of different digits / the date row). Cost: about 152 `fillRectangle` per minute.
 * Model results (`docs/burn-in-report.md`, full 24 h, white/white = worst case; stand-in fonts, so **estimates**): max pixels on 2.7 % (Small) / 3.2 % (Medium) /
   3.4 % (Large) with the "line" font-size mapping, 4.0 % with the pessimistic "digit" mapping; max luminance 1.8 - 3.0 %; longest run 2 minutes. Limits: 10 %, 10 %, 3 min.
-Status: rules VERIFIED-DOC; drawing API VERIFIED-DOC; numbers = host-model ESTIMATE; simulator Heat Map / watch measurement **UNVERIFIED** (G-2).
+Status: rules VERIFIED-DOC; drawing API VERIFIED-DOC; numbers VERIFIED-ON-BOX in the real simulator and font-accurate model (D-23). A watch run is still advisable.
 
 ## D-20 Fit check includes the outline
 
@@ -308,8 +308,20 @@ Review of this face:
 | Active mode | ~6 draw calls per frame, about 10 frames after each wrist raise. |
 | Always-on | 18 `drawText` (outline) + 2 `drawCircle` + 2 `drawText` + ~152 one-pixel `fillRectangle`, **once a minute**; 2.7 - 4 % of pixels lit (model), the rest black. |
 
-Expected impact: small (minute-rate, short draw), but **not measured**: no profiler or watch run was possible (G-1, G-15). How to measure: README "Battery".
-Status: rules VERIFIED-DOC; code review VERIFIED-ON-BOX (device-less strict build); runtime cost **UNVERIFIED** (G-15).
+Simulator profiler run (profiling build `-k`, Large white/white, about 11 min of mixed active and always-on, File > View Profiler; `docs/screenshots/profiler_large_white-white.png`):
+
+| Measured (simulator, host CPU microseconds) | Value |
+|---|---|
+| `onUpdate` calls / total / average | 145 / 1,891,700 us / 13,046 us |
+| Always-on frames (`drawRowMask`, `aodShift` calls) | 9; `drawOutlinedText` 18 calls, average 11,629 us -> about 28 ms per always-on minute |
+| Active frames | 136; about 12 ms each |
+| Text rebuilds (`Gregorian.info`, `formatHour`, `Lang.format`) | 9 each = once per minute, not per frame (cache works) |
+| Settings reads | `ensureLoaded` 435 calls at 1.6 us (cached), no `Properties.getValue` per frame |
+| `requestUpdate` / timers / background | 1 (settings) / none / none |
+| Runtime memory (simulator status bar) | 11.4 kB of 123.8 kB |
+
+So in always-on the face works about 28 ms per minute (< 0.05 % duty) and in active mode only during the documented ~10 s after a wrist raise. These are simulator times on the host CPU: Garmin does not document a conversion to watch time or battery percent, so the drain per day on the watch is still not measured (G-15, narrowed). No sign of anything that would drain the battery: no per-second work, no sensors, no network.
+Status: rules VERIFIED-DOC; code review and simulator profile VERIFIED-ON-BOX; battery % per day on the watch **UNVERIFIED** (G-15).
 
 ## D-22 Tests and compile verification
 
@@ -327,28 +339,55 @@ Status: rules VERIFIED-DOC; code review VERIFIED-ON-BOX (device-less strict buil
   'fenix9pro47mm'" and prints `BUILD SUCCESSFUL`. It runs the parser, symbol resolution and the strict type checker against the SDK API (checked by injecting an
   undefined symbol and a type error: both fail the build). It does **not** check device-specific things (device API level, memory limit, device fonts).
   `-d fenix9pro47mm` and `-e` fail with "Invalid device id specified" / "Device id 'fenix9pro47mm' listed in the manifest file is not recognized" until the device files are installed.
-Status: host tests VERIFIED-ON-BOX (pass); device-less strict build VERIFIED-ON-BOX (normal, `-t`, `-k`); unit tests in the simulator and the device build **UNVERIFIED** (G-1).
+Status: host tests VERIFIED-ON-BOX (22 pass); device build and simulator unit tests VERIFIED-ON-BOX (15/15 pass, D-23).
+
+## D-23 Device build, simulator run, real screenshots and burn-in measurement (2026-10-24)
+
+* **Device files:** `connect-iq-sdk-manager agreement accept --agreement-hash=...`, `login` (account from the environment, never stored in the repo),
+  `sdk set 9.3.0`, `device download -d fenix9pro47mm --include-fonts`. The CLI keeps its token in `~/.Garmin/ConnectIQ/token.json` on the build machine only.
+  `compiler.json`: connectIQVersion 6.0.3, watchFace memory 131072 bytes, 454 x 454 round AMOLED, 16 bpp. `simulator.json`: number fonts are
+  `Bionic_Medium.ttf`, small/large `Roboto-Regular.ttf` (downloaded with `--include-fonts`; Garmin files, not committed).
+* **Strict device build** `scripts/build.sh` (`monkeyc -d fenix9pro47mm ... -l 3 -w -r` and `monkeyc -e ... -l 3 -w`): `BUILD SUCCESSFUL`, no warnings.
+  `--build-stats`: code 3994 B, data 1703 B, PRG 21116 B; `.iq` 16740 B. Simulator status bar at runtime: 11.4 kB used of 123.8 kB.
+* **Unit tests:** `xvfb-run -a scripts/run-unit-tests.sh` -> `PASSED (passed=15, failed=0, errors=0)`. `monkeydo -t` exits 1 even when all tests pass (observed,
+  not documented), so the script judges by the printed summary. The script now also stops the `simulator` child of `connectiq`.
+* **Simulator on Debian 13 (box only, not needed on Ubuntu 22.04 CI):** `libwebkit2gtk-4.0-37` and its deps from Debian 12 into a private library dir,
+  `libjpeg.so.8` built from libjpeg-turbo 3.0.4, and a FreeType 2.13.3 built with `-Wl,-Bsymbolic` because the `simulator` binary exports its own
+  `TT_New_Context`/`FT_*` symbols and the system libfreetype crashed in `TT_New_Context` (gdb backtrace). The simulator also needs the device fonts:
+  without `--include-fonts` it crashes as soon as a watch face draws text.
+* **Always-on in the simulator:** *Settings > Display Mode > Always-On*. Screenshots (real simulator frames, 454 x 454 crop of the screen area, bezel
+  corners visible outside the round screen): `docs/screenshots/active_*.png`, `aod_*.png`, `simulator_window_small.png`. Each colour/size variant was
+  built with different property defaults (the app code is unchanged).
+* **Burn-in, real:** pixels on 2.12 / 2.34 / 2.67 / 2.49 % and luminance 1.38 / 1.52 / 2.07 / 2.01 % (Small white/cyan, Medium white/orange, Large
+  yellow/white, Large white/white). *File > View Screen Heat Map > 24-Hour Simulation*: "24-Hour simulation finished, no screen burn-in detected", peak
+  luminance usage 1.19 / 1.51 / 1.82 / 1.98 % (`docs/screenshots/burnin24h_*.png`). Limits: AMOLED FAQ <https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>.
+* **Burn-in, font-accurate full day:** the host model with the device TTFs (`CIQ_DEVICE_FONTS`) matches the real frames within 0.1 percentage point and
+  the "line" font-size mapping (identical glyph heights). Worst case over 1440 minutes, white/white, steps 88,888: 2.75 / 3.13 / 3.47 % pixels on,
+  1.85 / 2.27 / 2.56 % luminance, no pixel on for more than 2 consecutive minutes (`docs/burn-in-report.md`). The "digit" mapping (old worst case 4.03 %) is ruled out.
+* **Same size in always-on:** the time block is 57/77/87 px tall active and 62/82/91 px always-on (outline adds about 2 px each side): same font
+  (`tests/host/test_screenshots.py`).
+Status: VERIFIED-ON-BOX.
 
 ## Open gaps
 
 | # | Gap | Why | Resolution |
 |---|---|---|---|
-| G-1 | **No device build (`-d fenix9pro47mm`), no `.iq`, no simulator run, no unit-test run, no real screenshots.** Device-less strict build passes (D-22). | The device files are served only to a logged-in Garmin account. On 2026-10-24 the SDK licence hash was accepted and `connect-iq-sdk-manager login` was run with the provided account from the environment: it failed with `could not login: wrong usename or password?` (exit 1). Not retried further (account lock risk), not worked around; no device files fabricated. In addition the box (Debian 13) lacks `libwebkit2gtk-4.0` for the simulator. | Check the account works at sso.garmin.com (and whether it has MFA), or log in with the official SDK Manager; then `scripts/install-sdk.sh`, `scripts/build.sh`, `xvfb-run -a scripts/run-unit-tests.sh`. |
-| G-2 | Burn-in compliance only estimated (host model, stand-in fonts: max 4.0 % pixels, 3.0 % luminance, 2-min runs) | needs simulator heat map / watch | Simulator: *File -> View Screen Heat Map*; also watch for 10+ min in always-on |
-| G-3 | Glyph centring of the colon dots, final font choice and spacing not seen with real fonts | needs simulator | adjust `dotOffset` (14 %) in `drawTime` |
+| G-1 | ~~No device build / simulator / unit tests / screenshots~~ **RESOLVED 2026-10-24** (D-23). | | |
+| G-2 | ~~Burn-in only estimated~~ **RESOLVED** (D-23): real simulator 24-hour simulation, no burn-in; font-accurate model max 3.47 % | | a check on the watch is still advisable |
+| G-3 | ~~Colon centring / font choice / spacing~~ **RESOLVED** (D-23, screenshots) | | |
 | G-4 | Colon glyph in number fonts undocumented | docs silent | circles are used, no dependency |
-| G-5 | Hebrew date rendering / RTL order unverified | needs device language Hebrew | test in simulator with language set to Hebrew |
-| G-6 | `-r` for the `.iq` export undocumented | VS Code extension behaviour not documented | omit (documented form) |
-| G-7 | Store screenshot specs not documented in the sources read | listing form is behind the Garmin login | see the form when you submit; `docs/mockups` are NOT usable as screenshots |
-| G-8 | CI login with Garmin account may hit MFA/IP blocking | undocumented third-party pattern | fall back to building locally (README "Option B") |
-| G-9 | Device's API level not stated in the device page | stored in login-gated device files | the first build tells you (compiler error if `minApiLevel` is too high) |
-| G-10 | SDK licence | The agreement must be read and accepted by you (a person) | `connect-iq-sdk-manager agreement view`, then set the repo variable `CIQ_AGREEMENT_HASH` |
-| G-11 | Exact place of the on-device settings on the fēnix 9 Pro | docs only say "the system Watch Face menu"; no fēnix 9 manual was checked | look in the watch-face menu (where faces are chosen/edited) |
-| G-12 | Coexistence of `getSettingsView()` with the native editor on fēnix 8+/9; whether `onSettingsChanged()` fires after an on-device change; whether `MenuItem.setSubLabel` + `Menu2.updateItem` refresh the visible menu immediately | not documented | test on the simulator/watch; the menu reloads the settings cache itself (D-08) |
-| G-13 | Which font each size really gets; long localised dates (e.g. Hebrew) wider than the sample "Wed 30 Sep" | font widths not documented; needs device files | check all 3 sizes x 2 modes in the simulator, also in Hebrew |
-| G-14 | Hebrew in the menu sub-labels / phone settings list | needs device/phone | look at both with the language set to Hebrew |
-| G-15 | Real battery cost (profiler numbers, battery drain per day) | needs simulator profiler or the watch with a `-k` build | README "Battery" |
-| G-16 | Whether `drawText` with a transparent background + black overdraw gives a clean hollow glyph with Garmin's anti-aliased fonts (model: yes), and the exact `monkeydo -t` output format | not documented; needs simulator | look in the simulator; adjust `scripts/run-unit-tests.sh` grep if needed |
+| G-5 | Hebrew date rendering / RTL order unverified | not run in Hebrew yet | simulator *Settings > Language* Hebrew |
+| G-6 | `-r` for the `.iq` export undocumented | VS Code extension behaviour not documented | omitted (documented form); the `.iq` builds; store acceptance not tried |
+| G-7 | Store screenshot specs not documented in the sources read | listing form is behind the Garmin login | see the form when you submit; use `docs/screenshots/` (real), not `docs/mockups` |
+| G-8 | CI login with Garmin account may hit MFA/IP blocking | undocumented third-party pattern | the box login worked; CI not run (G-17) |
+| G-9 | ~~Device API level~~ **RESOLVED**: 6.0.3 (`compiler.json`, D-04) | | |
+| G-10 | SDK licence | must be read and accepted by a person | accepted on the build box by hash; CI needs `CIQ_AGREEMENT_HASH` |
+| G-11 | Exact place of the on-device settings on the fēnix 9 Pro | needs the watch | watch-face menu |
+| G-12 | `getSettingsView()` next to the native editor; `onSettingsChanged()` after an on-device change; immediate sub-label refresh | not documented; not exercised in the simulator yet | test on the watch |
+| G-13 | ~~Which font each size gets~~ **RESOLVED** (D-17/D-23); still open: long localised (Hebrew) dates | | check in Hebrew |
+| G-14 | Hebrew in the menu sub-labels / phone settings list | needs device/phone | look with the language set to Hebrew |
+| G-15 | Battery % per day on the watch | simulator profiler done (D-21: ~28 ms per always-on minute); Garmin gives no conversion to watch battery | wear it a day; `-k` build writes `GARMIN\APPS\LOGS\<app>.PRF` |
+| G-16 | ~~Hollow glyph rendering / `monkeydo -t` output~~ **RESOLVED** (D-23): clean hollow glyphs; summary `PASSED (passed=N, failed=0, errors=0)`, exit code 1 regardless | | |
 | G-17 | CI `build` job (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
 ## What WAS verified in this session
@@ -361,5 +400,7 @@ Status: host tests VERIFIED-ON-BOX (pass); device-less strict build VERIFIED-ON-
 * The colour list in `settings.xml` equals `NoirSettings.colorValues()`; every `Rez.Strings`/`@Strings` id used exists in both English and Hebrew strings (script check).
 * All doc URLs cited in D-08, D-15 - D-17 returned HTTP 200 (2026-10-24).
 * Strict (`-l 3 -w`) device-less builds of the normal, unit-test (`-t`) and profiling (`-k`) variants: `BUILD SUCCESSFUL` (D-22).
-* 18 host tests pass; full-day AOD model report in `docs/burn-in-report.md`.
-* Garmin login with the SDK manager CLI was attempted and failed (G-1).
+* Full-day AOD report in `docs/burn-in-report.md`.
+* Garmin login with the SDK manager CLI: first attempt failed (wrong password); after the password was corrected, the single retry succeeded.
+* Strict device build, `.iq` export, 15/15 simulator unit tests, real screenshots, 24-hour burn-in simulation, profiler (D-23, D-21).
+* 22 host tests pass (with stand-in and with device fonts).

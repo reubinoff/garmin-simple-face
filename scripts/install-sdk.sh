@@ -32,7 +32,8 @@ connect-iq-sdk-manager login            # reads GARMIN_USERNAME / GARMIN_PASSWOR
 connect-iq-sdk-manager sdk set "$SDK_VERSION"
 SDK_BIN="$(connect-iq-sdk-manager sdk current-path --bin)"
 export PATH="$SDK_BIN:$PATH"
-connect-iq-sdk-manager device download --manifest=manifest.xml
+# --include-fonts: the simulator crashes when a watch face draws text without the device fonts (DECISIONS D-23)
+connect-iq-sdk-manager device download --manifest=manifest.xml --include-fonts
 echo "SDK bin: $SDK_BIN"
 echo "Add to PATH:  export PATH=\"$SDK_BIN:\$PATH\""
 if [ -n "${GITHUB_PATH:-}" ]; then echo "$SDK_BIN" >> "$GITHUB_PATH"; fi
