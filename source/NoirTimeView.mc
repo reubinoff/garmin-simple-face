@@ -12,37 +12,50 @@ import Toybox.WatchUi;
 //!              12:34             <- hours / minutes in two user-selected colours
 //!              8,432             <- steps, grey
 //!
-//! Settings (phone or watch): time size Small / Medium / Large, hour colour, minute colour.
-//! The colon is the hour/minute colour when both are equal, otherwise neutral grey (DECISIONS.md D-15).
-//! Every size is checked against the round screen so time, date and steps never overlap and stay
-//! inside the circle (D-17). Always-on mode is smaller, dimmer and shifted every minute (D-09).
+//! Active mode: filled digits. Always-on mode (DECISIONS.md D-19): exactly the same fonts and layout, but the
+//! digits and colon are drawn as outlines only, date/steps in a dimmer grey, the block is shifted every minute and a
+//! rotating row mask turns every pixel off at least once every 3 minutes.
+//! Battery (D-21): settings, fonts, date text, steps text and the 12/24 h flag are cached; nothing is allocated
+//! per frame except what the system calls return; no timers, no partial updates, no background, no sensors.
 class NoirTimeView extends WatchUi.WatchFace {
 
-    // Colours (0xRRGGBB). The background is always pure black.
-    private const COLOR_TEXT = 0xB0B0B0;
-    private const COLOR_TEXT_AOD = 0x6E6E6E;
+    private var _inLowPower as Boolean = false;
 
-    // Always-on mode: brightness of the time colours (percent) and the size of the pixel shift.
-    private const AOD_TIME_BRIGHTNESS_PERCENT = 60;
-    private const AOD_SHIFT_PIXELS = 8;
-    // Room kept free at the edge of the round screen, in pixels (also covers the AOD shift).
-    private const EDGE_MARGIN = 12;
-    // Representative widest texts used for the fit check (the real text is drawn, these only size the layout).
-    private const SAMPLE_DATE = "Wed 30 Sep";
-    private const SAMPLE_STEPS = "100,000";
-
-    // Font cache: recomputed only when the size setting or the power mode changes.
-    private var _cachedKey as Number = -1;
+    // Layout cache: recomputed only when the size setting changes (or on a new layout).
+    private var _layoutSize as Number = -1;
     private var _timeFont as Graphics.FontType = Graphics.FONT_NUMBER_MEDIUM;
     private var _smallFont as Graphics.FontType = Graphics.FONT_SMALL;
-    private var _inLowPower as Boolean = false;
+    private var _timeHeight as Number = 0;
+    private var _smallHeight as Number = 0;
+    private var _spacing as Number = 0;
+    private var _colonGap as Number = 0;
+    private var _colonRadius as Number = 0;
+    private var _colonOffset as Number = 0;
+    private var _outline as Number = 0;
+
+    // Text caches.
+    private var _minuteOfDay as Number = -1;
+    private var _dateText as String = "";
+    private var _is24Hour as Boolean = true;
+    private var _hourText as String = "";
+    private var _minuteText as String = "";
+    private var _steps as Number or Null = null;
+    private var _stepsKnown as Boolean = false;
+    private var _stepsText as String = "--";
 
     function initialize() {
         WatchFace.initialize();
     }
 
     function onLayout(dc as Dc) as Void {
-        _cachedKey = -1;
+        _layoutSize = -1;
+    }
+
+    //! Called when the view comes back to the foreground (e.g. after the settings menu): refresh the
+    //! settings cache in case they were changed while the face was not visible.
+    function onShow() as Void {
+        NoirSettings.reload();
+        _minuteOfDay = -1;   // also picks up a 12/24 h change made in the system settings
     }
 
     function onUpdate(dc as Dc) as Void {
@@ -52,39 +65,71 @@ class NoirTimeView extends WatchUi.WatchFace {
             dc.setAntiAlias(true);
         }
 
-        var lowPower = isLowPower();
-        var size = NoirSettings.timeSize();
-        chooseFonts(dc, size, lowPower);
+        updateLayout(dc, NoirSettings.timeSize());
+        var clock = System.getClockTime();
+        updateTexts(clock);
 
+        var lowPower = isLowPower();
         var hourColor = NoirSettings.hourColor();
         var minuteColor = NoirSettings.minuteColor();
-        var colonColor = (hourColor == minuteColor) ? hourColor : COLOR_TEXT;
-        var textColor = COLOR_TEXT;
+        var colonColor = NoirLayout.colonColor(hourColor, minuteColor);
+        var textColor = NoirLayout.COLOR_TEXT;
         var centerX = dc.getWidth() / 2;
         var centerY = dc.getHeight() / 2;
-
         if (lowPower) {
-            // Burn-in protection: dimmer, and shifted on a 4-step cycle (one step per minute).
-            var phase = System.getClockTime().min % 4;
-            centerX += (phase == 0 || phase == 3) ? -AOD_SHIFT_PIXELS : AOD_SHIFT_PIXELS;
-            centerY += (phase < 2) ? -AOD_SHIFT_PIXELS : AOD_SHIFT_PIXELS;
-            hourColor = scaleColor(hourColor, AOD_TIME_BRIGHTNESS_PERCENT);
-            minuteColor = scaleColor(minuteColor, AOD_TIME_BRIGHTNESS_PERCENT);
-            colonColor = (colonColor == COLOR_TEXT) ? COLOR_TEXT_AOD : scaleColor(colonColor, AOD_TIME_BRIGHTNESS_PERCENT);
-            textColor = COLOR_TEXT_AOD;
+            var shift = NoirLayout.aodShift(clock.min);
+            centerX += shift[0];
+            centerY += shift[1];
+            textColor = NoirLayout.COLOR_TEXT_AOD;
         }
 
-        var timeHeight = dc.getFontHeight(_timeFont);
-        var smallHeight = dc.getFontHeight(_smallFont);
-        var spacing = rowSpacing(dc);
+        var justifyRight = Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER;
+        var justifyLeft = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
+        var hourX = centerX - _colonGap / 2;
+        var minuteX = centerX + _colonGap / 2;
 
-        drawTime(dc, centerX, centerY, timeHeight, hourColor, minuteColor, colonColor);
+        if (lowPower) {
+            drawOutlinedText(dc, hourX, centerY, _hourText, justifyRight, hourColor);
+            drawOutlinedText(dc, minuteX, centerY, _minuteText, justifyLeft, minuteColor);
+            dc.setColor(colonColor, Graphics.COLOR_TRANSPARENT);
+            dc.setPenWidth(_outline);
+            dc.drawCircle(centerX, centerY - _colonOffset, _colonRadius);
+            dc.drawCircle(centerX, centerY + _colonOffset, _colonRadius);
+        } else {
+            dc.setColor(hourColor, Graphics.COLOR_TRANSPARENT);
+            dc.drawText(hourX, centerY, _timeFont, _hourText, justifyRight);
+            dc.setColor(minuteColor, Graphics.COLOR_TRANSPARENT);
+            dc.drawText(minuteX, centerY, _timeFont, _minuteText, justifyLeft);
+            dc.setColor(colonColor, Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(centerX, centerY - _colonOffset, _colonRadius);
+            dc.fillCircle(centerX, centerY + _colonOffset, _colonRadius);
+        }
 
-        dc.setColor(textColor, Graphics.COLOR_BLACK);
-        dc.drawText(centerX, centerY - timeHeight / 2 - spacing - smallHeight / 2, _smallFont, dateText(),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.drawText(centerX, centerY + timeHeight / 2 + spacing + smallHeight / 2, _smallFont, stepsText(),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.setColor(textColor, Graphics.COLOR_TRANSPARENT);
+        var rowOffset = _timeHeight / 2 + _spacing + _smallHeight / 2;
+        var justifyCenter = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
+        dc.drawText(centerX, centerY - rowOffset, _smallFont, _dateText, justifyCenter);
+        dc.drawText(centerX, centerY + rowOffset, _smallFont, _stepsText, justifyCenter);
+
+        if (lowPower) {
+            drawRowMask(dc, clock.min);
+        }
+    }
+
+    //! Burn-in row mask (D-19): blacks out every AOD_MASK_PERIOD-th row of the whole screen, a different set
+    //! each minute, with 1 px high Dc.fillRectangle calls (API 1.0.0). The whole screen is masked so the
+    //! guarantee does not depend on where the fonts really put their glyphs. Anti-aliasing (documented for
+    //! primitives) is switched off first so the rows are exact.
+    private function drawRowMask(dc as Dc, minute as Number) as Void {
+        if (dc has :setAntiAlias) {
+            dc.setAntiAlias(false);
+        }
+        var width = dc.getWidth();
+        var height = dc.getHeight();
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+        for (var row = NoirLayout.maskFirstRow(0, minute); row < height; row += NoirLayout.AOD_MASK_PERIOD) {
+            dc.fillRectangle(0, row, width, 1);
+        }
     }
 
     function onEnterSleep() as Void {
@@ -97,136 +142,67 @@ class NoirTimeView extends WatchUi.WatchFace {
         WatchUi.requestUpdate();
     }
 
-    //! Font candidates per size, largest first. The first candidate that fits the screen is used.
-    //! Always-on mode is capped at FONT_NUMBER_MILD to keep the lit area small (D-09, D-17).
-    private function timeFontCandidates(size as Number, lowPower as Boolean) as Array<Graphics.FontType> {
-        if (lowPower) {
-            if (size == NoirSettings.SIZE_SMALL) {
-                return [Graphics.FONT_LARGE] as Array<Graphics.FontType>;
-            }
-            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
+    //! Outline-only text (D-19): the text is drawn in colour at 8 neighbour offsets of _outline pixels
+    //! (a dilation), then once in black at the real position, which leaves a ring _outline pixels wide.
+    //! Uses only Dc.setColor / Dc.drawText (API 1.0.0) with a transparent text background.
+    private function drawOutlinedText(dc as Dc, x as Number, y as Number, text as String,
+            justification as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        for (var i = 0; i < 8; i++) {
+            dc.drawText(x + NoirLayout.OUTLINE_DX[i] * _outline, y + NoirLayout.OUTLINE_DY[i] * _outline,
+                _timeFont, text, justification);
         }
-        if (size == NoirSettings.SIZE_SMALL) {
-            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
-        }
-        if (size == NoirSettings.SIZE_LARGE) {
-            return [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM,
-                    Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
-        }
-        return [Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(x, y, _timeFont, text, justification);
     }
 
-    private function chooseFonts(dc as Dc, size as Number, lowPower as Boolean) as Void {
-        var key = size * 2 + (lowPower ? 1 : 0);
-        if (key == _cachedKey) {
+    //! Picks the time font for the size setting (first candidate that fits, outline included) and caches
+    //! all derived metrics. Same result in active and always-on mode.
+    private function updateLayout(dc as Dc, size as Number) as Void {
+        if (size == _layoutSize) {
             return;
         }
-        _cachedKey = key;
-        _smallFont = lowPower ? Graphics.FONT_XTINY : Graphics.FONT_SMALL;
-        var candidates = timeFontCandidates(size, lowPower);
+        _layoutSize = size;
+        _smallFont = Graphics.FONT_SMALL;
+        _smallHeight = dc.getFontHeight(_smallFont);
+        var dateWidth = dc.getTextWidthInPixels(NoirLayout.SAMPLE_DATE, _smallFont);
+        var stepsWidth = dc.getTextWidthInPixels(NoirLayout.SAMPLE_STEPS, _smallFont);
+        var candidates = NoirLayout.fontCandidates(size);
         _timeFont = candidates[candidates.size() - 1];
         for (var i = 0; i < candidates.size(); i++) {
-            if (fits(dc, candidates[i], _smallFont)) {
+            var height = dc.getFontHeight(candidates[i]);
+            var digits = dc.getTextWidthInPixels("00", candidates[i]);
+            if (NoirLayout.blockFits(dc.getWidth(), height, digits, _smallHeight, dateWidth, stepsWidth,
+                    NoirLayout.outlineWidth(height))) {
                 _timeFont = candidates[i];
-                return;
+                break;
             }
         }
+        _timeHeight = dc.getFontHeight(_timeFont);
+        _spacing = NoirLayout.rowSpacing(dc.getHeight());
+        _colonGap = NoirLayout.colonGap(_timeHeight);
+        _colonRadius = NoirLayout.colonRadius(_timeHeight);
+        _colonOffset = NoirLayout.colonDotOffset(_timeHeight);
+        _outline = NoirLayout.outlineWidth(_timeHeight);
     }
 
-    //! True if a point at horizontal half-width halfW and vertical offset dy from the centre is inside
-    //! the round screen minus EDGE_MARGIN. Integer maths only (squares), no square roots.
-    private function insideCircle(dc as Dc, halfW as Number, dy as Number) as Boolean {
-        var radius = dc.getWidth() / 2 - EDGE_MARGIN;
-        return halfW * halfW + dy * dy <= radius * radius;
-    }
-
-    //! Checks the whole block (date / time / steps) for a time font against the round screen:
-    //! the outer corners of each row's box must be inside the circle. Rows are stacked without overlap
-    //! by construction (each row is placed below the previous one's box plus spacing).
-    private function fits(dc as Dc, timeFont as Graphics.FontType, smallFont as Graphics.FontType) as Boolean {
-        var timeHeight = dc.getFontHeight(timeFont);
-        var smallHeight = dc.getFontHeight(smallFont);
-        var spacing = rowSpacing(dc);
-        var timeHalfWidth = (dc.getTextWidthInPixels("00", timeFont) * 2 + colonGap(timeHeight)) / 2;
-        var dateHalfWidth = dc.getTextWidthInPixels(SAMPLE_DATE, smallFont) / 2;
-        var stepsHalfWidth = dc.getTextWidthInPixels(SAMPLE_STEPS, smallFont) / 2;
-        var rowOuterEdge = timeHeight / 2 + spacing + smallHeight;
-        return insideCircle(dc, timeHalfWidth, timeHeight / 2)
-            && insideCircle(dc, dateHalfWidth, rowOuterEdge)
-            && insideCircle(dc, stepsHalfWidth, rowOuterEdge);
-    }
-
-    private function rowSpacing(dc as Dc) as Number {
-        return dc.getHeight() * 3 / 100;
-    }
-
-    //! Draws "HH:MM" with the colon fixed at (centerX, centerY). The colon is two filled circles,
-    //! because colon support in the number-only fonts is not documented.
-    private function drawTime(dc as Dc, centerX as Number, centerY as Number, fontHeight as Number,
-            hourColor as Number, minuteColor as Number, colonColor as Number) as Void {
-        var clock = System.getClockTime();
-        var hour = clock.hour;
-        var is24Hour = System.getDeviceSettings().is24Hour;
-        if (!is24Hour) {
-            hour = hour % 12;
-            if (hour == 0) {
-                hour = 12;
-            }
+    //! Date, hour and minute texts and the 12/24 h flag: rebuilt once per minute. Steps text: rebuilt only when the count changes.
+    private function updateTexts(clock as System.ClockTime) as Void {
+        var minuteOfDay = clock.hour * 60 + clock.min;
+        if (minuteOfDay != _minuteOfDay) {
+            _minuteOfDay = minuteOfDay;
+            var info = Gregorian.info(Time.now(), Time.FORMAT_MEDIUM);
+            _dateText = Lang.format("$1$ $2$ $3$", [info.day_of_week, info.day, info.month]);
+            _is24Hour = System.getDeviceSettings().is24Hour;
+            _hourText = NoirLayout.formatHour(clock.hour, _is24Hour);
+            _minuteText = clock.min.format("%02d");
         }
-        var hourText = is24Hour ? hour.format("%02d") : hour.toString();
-        var minuteText = clock.min.format("%02d");
-
-        var gap = colonGap(fontHeight);
-        var dotRadius = colonRadius(fontHeight);
-        var dotOffset = fontHeight * 14 / 100;
-
-        dc.setColor(hourColor, Graphics.COLOR_BLACK);
-        dc.drawText(centerX - gap / 2, centerY, _timeFont, hourText, Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.setColor(minuteColor, Graphics.COLOR_BLACK);
-        dc.drawText(centerX + gap / 2, centerY, _timeFont, minuteText, Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.setColor(colonColor, Graphics.COLOR_BLACK);
-        dc.fillCircle(centerX, centerY - dotOffset, dotRadius);
-        dc.fillCircle(centerX, centerY + dotOffset, dotRadius);
-    }
-
-    private function colonRadius(fontHeight as Number) as Number {
-        var radius = fontHeight / 26;
-        return radius < 3 ? 3 : radius;
-    }
-
-    private function colonGap(fontHeight as Number) as Number {
-        return colonRadius(fontHeight) * 6;
-    }
-
-    //! "Fri 23 Oct" in the language of the watch (FORMAT_MEDIUM returns localised strings).
-    private function dateText() as String {
-        var info = Gregorian.info(Time.now(), Time.FORMAT_MEDIUM);
-        return Lang.format("$1$ $2$ $3$", [info.day_of_week, info.day, info.month]);
-    }
-
-    //! Today's steps with a thousands separator, or "--" when the device reports none.
-    private function stepsText() as String {
         var steps = ActivityMonitor.getInfo().steps;
-        if (steps == null) {
-            return "--";
+        if (!_stepsKnown || steps != _steps) {
+            _stepsKnown = true;
+            _steps = steps;
+            _stepsText = NoirLayout.formatSteps(steps);
         }
-        var digits = steps.toString();
-        var length = digits.length();
-        var result = "";
-        for (var i = 0; i < length; i++) {
-            if (i > 0 && (length - i) % 3 == 0) {
-                result += ",";
-            }
-            result += (digits.substring(i, i + 1) as String);
-        }
-        return result;
-    }
-
-    private function scaleColor(color as Number, percent as Number) as Number {
-        var red = ((color >> 16) & 0xFF) * percent / 100;
-        var green = ((color >> 8) & 0xFF) * percent / 100;
-        var blue = (color & 0xFF) * percent / 100;
-        return (red << 16) | (green << 8) | blue;
     }
 
     //! True when the watch is in always-on / low power mode.

@@ -17,3 +17,5 @@ developer_key*
 # Simulator / SDK scratch
 /.Garmin/
 internal-mir/
+__pycache__/
+*.pyc

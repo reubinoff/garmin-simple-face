@@ -26,8 +26,10 @@ class NoirTimeApp extends Application.AppBase {
         return [ menu, new NoirTimeSettingsDelegate(menu) ];
     }
 
-    //! Called when the user changes a setting in Garmin Connect; redraw with the new values.
+    //! Called when the user changes a setting in Garmin Connect ("triggered by settings change in GCM",
+    //! AppBase doc). The settings are cached (battery, DECISIONS.md D-21), so reload them here.
     function onSettingsChanged() as Void {
+        NoirSettings.reload();
         WatchUi.requestUpdate();
     }
 

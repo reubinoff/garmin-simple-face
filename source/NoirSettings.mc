@@ -3,7 +3,12 @@ import Toybox.Lang;
 
 //! Shared definition of the user settings, used by the watch face (reading) and the on-device
 //! settings menu (reading + writing). The phone-side definition is in resources/settings/settings.xml
-//! and resources/properties/properties.xml - KEEP THE VALUES BELOW IN SYNC WITH THOSE FILES.
+//! and resources/properties/properties.xml - KEEP THE VALUES BELOW IN SYNC WITH THOSE FILES
+//! (checked by tests/host/test_resources.py).
+//!
+//! Battery (DECISIONS.md D-21): the three values are read from Application.Properties once and cached.
+//! The cache is refreshed by reload(), called from AppBase.onSettingsChanged(), after an on-device change
+//! (cycle()) and when the watch face view is shown again (onShow).
 module NoirSettings {
 
     const KEY_TIME_SIZE = "TimeSize";
@@ -15,6 +20,11 @@ module NoirSettings {
     const SIZE_LARGE = 2;
 
     const DEFAULT_COLOR = 0xFFFFFF;
+
+    var _loaded as Boolean = false;
+    var _timeSize as Number = SIZE_MEDIUM;
+    var _hourColor as Number = DEFAULT_COLOR;
+    var _minuteColor as Number = DEFAULT_COLOR;
 
     //! The 8 time colours, same order and values as the list in settings.xml.
     function colorValues() as Array<Number> {
@@ -36,29 +46,62 @@ module NoirSettings {
         return [Rez.Strings.SizeSmall, Rez.Strings.SizeMedium, Rez.Strings.SizeLarge];
     }
 
-    //! Reads a number property; returns fallback if the stored value is not a Number.
-    function readNumber(key as String, fallback as Number) as Number {
-        var value = Application.Properties.getValue(key);
+    //! Parses a stored size: anything that is not a Number in 0..2 becomes Medium.
+    function parseSize(value as Object or Null) as Number {
         if (value instanceof Number) {
-            return value as Number;
+            var size = value as Number;
+            if (size >= SIZE_SMALL && size <= SIZE_LARGE) {
+                return size;
+            }
         }
-        return fallback;
+        return SIZE_MEDIUM;
+    }
+
+    //! Parses a stored colour: anything that is not a Number in 0x000000..0xFFFFFF becomes white.
+    function parseColor(value as Object or Null) as Number {
+        if (value instanceof Number) {
+            var color = value as Number;
+            if (color >= 0 && color <= 0xFFFFFF) {
+                return color;
+            }
+        }
+        return DEFAULT_COLOR;
+    }
+
+    //! Reads all three properties (Properties.getValue, API 2.4.0) into the cache.
+    function reload() as Void {
+        _timeSize = parseSize(Application.Properties.getValue(KEY_TIME_SIZE));
+        _hourColor = parseColor(Application.Properties.getValue(KEY_HOUR_COLOR));
+        _minuteColor = parseColor(Application.Properties.getValue(KEY_MINUTE_COLOR));
+        _loaded = true;
+    }
+
+    function ensureLoaded() as Void {
+        if (!_loaded) {
+            reload();
+        }
     }
 
     function hourColor() as Number {
-        return readNumber(KEY_HOUR_COLOR, DEFAULT_COLOR);
+        ensureLoaded();
+        return _hourColor;
     }
 
     function minuteColor() as Number {
-        return readNumber(KEY_MINUTE_COLOR, DEFAULT_COLOR);
+        ensureLoaded();
+        return _minuteColor;
     }
 
     function timeSize() as Number {
-        var size = readNumber(KEY_TIME_SIZE, SIZE_MEDIUM);
-        if (size < SIZE_SMALL || size > SIZE_LARGE) {
-            return SIZE_MEDIUM;
+        ensureLoaded();
+        return _timeSize;
+    }
+
+    function valueOf(key as String) as Number {
+        if (key.equals(KEY_TIME_SIZE)) {
+            return timeSize();
         }
-        return size;
+        return key.equals(KEY_HOUR_COLOR) ? hourColor() : minuteColor();
     }
 
     //! Values and labels for a setting key (used by the on-device menu).
@@ -70,31 +113,32 @@ module NoirSettings {
         return key.equals(KEY_TIME_SIZE) ? sizeLabels() : colorLabels();
     }
 
-    function fallbackFor(key as String) as Number {
-        return key.equals(KEY_TIME_SIZE) ? SIZE_MEDIUM : DEFAULT_COLOR;
-    }
-
-    //! Index of the stored value in the value list, or 0 if it is not in the list.
-    function currentIndex(key as String) as Number {
-        var values = valuesFor(key);
-        var current = readNumber(key, fallbackFor(key));
+    //! Index of value in values, or 0 if it is not in the list.
+    function indexIn(values as Array<Number>, value as Number) as Number {
         for (var i = 0; i < values.size(); i++) {
-            if (values[i] == current) {
+            if (values[i] == value) {
                 return i;
             }
         }
         return 0;
     }
 
-    function currentLabel(key as String) as ResourceId {
-        return labelsFor(key)[currentIndex(key)];
+    //! Index after index, wrapping around at count.
+    function nextIndex(index as Number, count as Number) as Number {
+        return (index + 1) % count;
     }
 
-    //! Moves the setting to the next value (wrapping around), stores it, and returns the new label.
+    function currentLabel(key as String) as ResourceId {
+        return labelsFor(key)[indexIn(valuesFor(key), valueOf(key))];
+    }
+
+    //! Moves the setting to the next value (wrapping around), stores it (Properties.setValue, API 2.4.0),
+    //! refreshes the cache and returns the new label.
     function cycle(key as String) as ResourceId {
         var values = valuesFor(key);
-        var next = (currentIndex(key) + 1) % values.size();
+        var next = nextIndex(indexIn(values, valueOf(key)), values.size());
         Application.Properties.setValue(key, values[next]);
+        reload();
         return labelsFor(key)[next];
     }
 }

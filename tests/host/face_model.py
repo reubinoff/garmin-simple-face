@@ -1,0 +1,271 @@
+"""Host-side model of the Noir Time watch face (no Connect IQ SDK / device files needed).
+
+* A line-by-line Python port of the pure functions in source/NoirLayout.mc (constants are read from that file,
+  so the port cannot silently drift).
+* A renderer that draws the face like NoirTimeView.onUpdate() does, with STAND-IN fonts: Rajdhani Medium and
+  Roboto Regular - the families/files the fēnix 9 Pro 47mm device reference lists for FONT_NUMBER_* and
+  FONT_SMALL/FONT_LARGE - from Google Fonts (OFL, in tests/host/fonts). Garmin's own rasteriser and font files
+  are inside the login-gated device files, so pixel numbers from this model are ESTIMATES, not measurements.
+
+Font-size mapping: the device reference gives one "Font Size" per font. It is not documented whether that is the
+line height or the glyph height, so two mappings are modelled:
+  "line"  - size = ascent + descent (as Dc.getFontHeight would report a normal font)  -> smaller glyphs
+  "digit" - size = height of the digit "0" (number fonts cropped to the digits)        -> larger glyphs (worst case)
+"""
+import os
+import re
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+RAJDHANI = os.path.join(FONT_DIR, "Rajdhani-Medium.ttf")
+ROBOTO = os.path.join(FONT_DIR, "Roboto-VariableFont_wdth,wght.ttf")
+
+SCREEN = 454  # fēnix 9 Pro 47mm, device reference
+
+# Font heights from the fēnix 9 Pro 47mm device reference (fenix9pro47mm).
+FONTS = {
+    "FONT_XTINY": ("roboto", 37), "FONT_SMALL": ("roboto", 53), "FONT_LARGE": ("roboto", 71),
+    "FONT_NUMBER_MILD": ("rajdhani", 113), "FONT_NUMBER_MEDIUM": ("rajdhani", 153),
+    "FONT_NUMBER_HOT": ("rajdhani", 173), "FONT_NUMBER_THAI_HOT": ("rajdhani", 210),
+}
+
+
+def _mc_constants(path):
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    consts = {}
+    for name, value in re.findall(r"const (\w+) = ([^;]+);", text):
+        value = value.strip()
+        if re.fullmatch(r"0x[0-9A-Fa-f]+|-?\d+", value):
+            consts[name] = int(value, 0)
+        elif value.startswith('"'):
+            consts[name] = value.strip('"')
+        elif value.startswith("["):
+            consts[name] = [int(v) for v in re.findall(r"-?\d+", value.split(" as ")[0])]
+    return consts
+
+
+L = _mc_constants(os.path.join(ROOT, "source", "NoirLayout.mc"))
+S = _mc_constants(os.path.join(ROOT, "source", "NoirSettings.mc"))
+
+FONT_CANDIDATES = {
+    S["SIZE_SMALL"]: ["FONT_NUMBER_MILD", "FONT_LARGE"],
+    S["SIZE_MEDIUM"]: ["FONT_NUMBER_MEDIUM", "FONT_NUMBER_MILD"],
+    S["SIZE_LARGE"]: ["FONT_NUMBER_THAI_HOT", "FONT_NUMBER_HOT", "FONT_NUMBER_MEDIUM", "FONT_NUMBER_MILD"],
+}
+
+
+def color_values():
+    """NoirSettings.colorValues() read from the Monkey C source (8 palette colours, Number 0xRRGGBB)."""
+    with open(os.path.join(ROOT, "source", "NoirSettings.mc"), encoding="utf-8") as fh:
+        body = re.search(r"function colorValues\(\).*?\[(.*?)\]", fh.read(), re.S).group(1)
+    return [int(v, 16) for v in body.split(",")]
+
+
+SIZE_NAMES = {S["SIZE_SMALL"]: "small", S["SIZE_MEDIUM"]: "medium", S["SIZE_LARGE"]: "large"}
+
+
+def mc_div(a, b):
+    """Monkey C integer division truncates toward zero."""
+    q = abs(a) // abs(b)
+    return q if (a >= 0) == (b > 0) else -q
+
+
+# ---- port of NoirLayout.mc -------------------------------------------------------------------
+def row_spacing(h):
+    return mc_div(h * L["ROW_SPACING_PERCENT"], 100)
+
+
+def colon_radius(fh):
+    return max(3, mc_div(fh, 26))
+
+
+def colon_gap(fh):
+    return colon_radius(fh) * 6
+
+
+def colon_dot_offset(fh):
+    return mc_div(fh * 14, 100)
+
+
+def outline_width(fh):
+    return min(L["OUTLINE_MAX"], max(L["OUTLINE_MIN"], mc_div(fh, 64)))
+
+
+def inside_circle(radius, half_w, dy):
+    return half_w * half_w + dy * dy <= radius * radius
+
+
+def block_fits(screen, th, digits_w, sh, date_w, steps_w, pad):
+    radius = mc_div(screen, 2) - L["EDGE_MARGIN"]
+    sp = row_spacing(screen)
+    half_w = mc_div(digits_w * 2 + colon_gap(th), 2) + pad
+    half_h = mc_div(th, 2) + pad
+    outer = mc_div(th, 2) + sp + sh
+    return (inside_circle(radius, half_w, half_h) and inside_circle(radius, mc_div(date_w, 2), outer)
+            and inside_circle(radius, mc_div(steps_w, 2), outer))
+
+
+def aod_shift(minute):
+    p = minute % 4
+    s = L["AOD_SHIFT_PIXELS"]
+    return (-s if p in (0, 3) else s, -s if p < 2 else s)
+
+
+def mask_first_row(top, minute):
+    p = L["AOD_MASK_PERIOD"]
+    row = top
+    while row % p != minute % p:
+        row += 1
+    return row
+
+
+def colon_color(hour_c, minute_c):
+    return hour_c if hour_c == minute_c else L["COLOR_TEXT"]
+
+
+def format_hour(hour, is24):
+    if is24:
+        return "%02d" % hour
+    h = hour % 12
+    return str(12 if h == 0 else h)
+
+
+def format_steps(steps):
+    if steps is None:
+        return "--"
+    return "{:,}".format(steps)
+
+
+# ---- stand-in fonts ------------------------------------------------------------------------
+class Font:
+    def __init__(self, name, mapping):
+        family, height = FONTS[name]
+        self.name, self.height, self.family, self.mapping = name, height, family, mapping
+        path = RAJDHANI if family == "rajdhani" else ROBOTO
+        probe = self._load(path, 1000)
+        if mapping == "digit" and family == "rajdhani":
+            box = probe.getbbox("0", anchor="ls")
+            em = 1000 * height / (box[3] - box[1])
+        else:
+            asc, desc = probe.getmetrics()
+            em = 1000 * height / (asc + desc)
+        self.font = self._load(path, max(1, round(em)))
+
+    @staticmethod
+    def _load(path, size):
+        f = ImageFont.truetype(path, size)
+        if path == ROBOTO:
+            f.set_variation_by_name("Regular")
+        return f
+
+    def width(self, text):
+        return int(round(self.font.getlength(text)))
+
+    def draw(self, d, x, y, text, justify, fill):
+        """Dc.drawText with TEXT_JUSTIFY_{LEFT,RIGHT,CENTER} | TEXT_JUSTIFY_VCENTER."""
+        w = self.font.getlength(text)
+        left = {"left": x, "right": x - w, "center": x - w / 2}[justify]
+        if self.mapping == "digit" and self.family == "rajdhani":
+            d.text((left, y + self.height / 2), text, font=self.font, fill=fill, anchor="ls")
+        else:
+            d.text((left, y), text, font=self.font, fill=fill, anchor="lm")
+
+
+def choose_time_font(size, mapping):
+    """Port of NoirTimeView.updateLayout(): first candidate that fits, outline pad included."""
+    small = Font("FONT_SMALL", mapping)
+    date_w, steps_w = small.width(L["SAMPLE_DATE"]), small.width(L["SAMPLE_STEPS"])
+    cands = FONT_CANDIDATES[size]
+    for name in cands:
+        f = Font(name, mapping)
+        if block_fits(SCREEN, f.height, f.width("00"), small.height, date_w, steps_w, outline_width(f.height)):
+            return f, small
+    return Font(cands[-1], mapping), small
+
+
+def rgb(c):
+    return ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF)
+
+
+def render(size, hour_color, minute_color, low_power, hour=10, minute=8, steps=8432, date="Fri 23 Oct",
+           is24=True, mapping="line", fonts=None):
+    # mask=False is not offered on purpose: the model always draws exactly what the watch draws.
+    """Returns an RGB numpy array (SCREEN x SCREEN x 3) drawn like NoirTimeView.onUpdate()."""
+    tf, sf = fonts if fonts else choose_time_font(size, mapping)
+    im = Image.new("RGB", (SCREEN, SCREEN), (0, 0, 0))
+    d = ImageDraw.Draw(im)
+    th, sh = tf.height, sf.height
+    cx = cy = SCREEN // 2
+    text_c = L["COLOR_TEXT"]
+    colon_c = colon_color(hour_color, minute_color)
+    if low_power:
+        dx, dy = aod_shift(minute)
+        cx, cy = cx + dx, cy + dy
+        text_c = L["COLOR_TEXT_AOD"]
+    gap, r, off, ow = colon_gap(th), colon_radius(th), colon_dot_offset(th), outline_width(th)
+    hx, mx = cx - mc_div(gap, 2), cx + mc_div(gap, 2)
+    ht, mt = format_hour(hour, is24), "%02d" % minute
+    if low_power:
+        for x, t, j, c in ((hx, ht, "right", hour_color), (mx, mt, "left", minute_color)):
+            for ddx, ddy in zip(L["OUTLINE_DX"], L["OUTLINE_DY"]):
+                tf.draw(d, x + ddx * ow, cy + ddy * ow, t, j, rgb(c))
+            tf.draw(d, x, cy, t, j, (0, 0, 0))
+        for yy in (cy - off, cy + off):  # Dc.drawCircle with pen width ow (pen centred on the radius)
+            d.ellipse((cx - r - ow / 2, yy - r - ow / 2, cx + r + ow / 2, yy + r + ow / 2), outline=rgb(colon_c),
+                      width=ow)
+    else:
+        tf.draw(d, hx, cy, ht, "right", rgb(hour_color))
+        tf.draw(d, mx, cy, mt, "left", rgb(minute_color))
+        for yy in (cy - off, cy + off):
+            d.ellipse((cx - r, yy - r, cx + r, yy + r), fill=rgb(colon_c))
+    row = mc_div(th, 2) + row_spacing(SCREEN) + mc_div(sh, 2)
+    sf.draw(d, cx, cy - row, date, "center", rgb(text_c))
+    sf.draw(d, cx, cy + row, format_steps(steps), "center", rgb(text_c))
+    arr = np.asarray(im).copy()
+    if low_power:  # NoirTimeView.drawRowMask()
+        for y in range(mask_first_row(0, minute), SCREEN, L["AOD_MASK_PERIOD"]):
+            arr[y, :, :] = 0
+    yy, xx = np.ogrid[:SCREEN, :SCREEN]
+    outside = (xx - SCREEN / 2 + 0.5) ** 2 + (yy - SCREEN / 2 + 0.5) ** 2 > (SCREEN / 2) ** 2
+    arr[outside] = 0  # round screen
+    return arr
+
+
+def screen_pixels():
+    yy, xx = np.ogrid[:SCREEN, :SCREEN]
+    return int(((xx - SCREEN / 2 + 0.5) ** 2 + (yy - SCREEN / 2 + 0.5) ** 2 <= (SCREEN / 2) ** 2).sum())
+
+
+def lit_fraction(arr):
+    """'a pixel is considered on when rendering any color other than black' (AMOLED FAQ); share of ALL
+    454x454 pixels (the rule says 'screen pixels'), and of the round visible area."""
+    lit = int((arr.max(axis=2) > 0).sum())
+    return lit / (SCREEN * SCREEN), lit / screen_pixels()
+
+
+def luminance_fraction(arr):
+    """Mean relative luminance (Rec. 709 weights) of the visible area, 0..1 (Venu 2+ '10 % luminance' rule)."""
+    y = (0.2126 * arr[..., 0] + 0.7152 * arr[..., 1] + 0.0722 * arr[..., 2]) / 255.0
+    return float(y.sum() / screen_pixels())
+
+
+def burn_in_run(size, hour_color, minute_color, start_minute, minutes, mapping="line", steps=8432):
+    """Simulates `minutes` consecutive always-on updates (one per minute, as documented for low power) and
+    returns (max lit fraction, max luminance fraction, longest run of consecutive minutes any pixel stayed on)."""
+    fonts = choose_time_font(size, mapping)
+    run = np.zeros((SCREEN, SCREEN), dtype=np.int32)
+    longest, max_lit, max_lum = 0, 0.0, 0.0
+    for i in range(minutes):
+        t = (start_minute + i) % 1440
+        arr = render(size, hour_color, minute_color, True, hour=t // 60, minute=t % 60, steps=steps,
+                     mapping=mapping, fonts=fonts)
+        on = arr.max(axis=2) > 0
+        run = np.where(on, run + 1, 0)
+        longest = max(longest, int(run.max()))
+        max_lit = max(max_lit, lit_fraction(arr)[0])
+        max_lum = max(max_lum, luminance_fraction(arr))
+    return max_lit, max_lum, longest
