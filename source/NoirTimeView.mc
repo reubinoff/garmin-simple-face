@@ -1,4 +1,3 @@
-import Toybox.Application;
 import Toybox.ActivityMonitor;
 import Toybox.Graphics;
 import Toybox.Lang;
@@ -9,55 +8,41 @@ import Toybox.WatchUi;
 
 //! Black watch face that shows only the date, the time and today's steps.
 //!
-//! Layout (all positions are derived from the real screen size, nothing is hard-coded to 454 px):
-//!
 //!            Fri 23 Oct          <- date, grey
-//!              12:34             <- time, user-selected colour
+//!              12:34             <- hours / minutes in two user-selected colours
 //!              8,432             <- steps, grey
 //!
-//! In always-on (low power) mode the whole block is drawn smaller and dimmer and is moved by a
-//! few pixels every minute, to respect the AMOLED burn-in rules (see DECISIONS.md D-09).
+//! Settings (phone or watch): time size Small / Medium / Large, hour colour, minute colour.
+//! The colon is the hour/minute colour when both are equal, otherwise neutral grey (DECISIONS.md D-15).
+//! Every size is checked against the round screen so time, date and steps never overlap and stay
+//! inside the circle (D-17). Always-on mode is smaller, dimmer and shifted every minute (D-09).
 class NoirTimeView extends WatchUi.WatchFace {
 
     // Colours (0xRRGGBB). The background is always pure black.
     private const COLOR_TEXT = 0xB0B0B0;
     private const COLOR_TEXT_AOD = 0x6E6E6E;
 
-    // Fraction (percent) of the screen width the time may use in high power mode.
-    private const TIME_MAX_WIDTH_PERCENT = 86;
-    // Always-on mode: brightness of the time colour (percent) and the size of the pixel shift.
+    // Always-on mode: brightness of the time colours (percent) and the size of the pixel shift.
     private const AOD_TIME_BRIGHTNESS_PERCENT = 60;
     private const AOD_SHIFT_PIXELS = 8;
+    // Room kept free at the edge of the round screen, in pixels (also covers the AOD shift).
+    private const EDGE_MARGIN = 12;
+    // Representative widest texts used for the fit check (the real text is drawn, these only size the layout).
+    private const SAMPLE_DATE = "Wed 30 Sep";
+    private const SAMPLE_STEPS = "100,000";
 
-    // Time fonts from largest to smallest. The first one that fits the width budget is used.
-    private const TIME_FONTS = [
-        Graphics.FONT_NUMBER_THAI_HOT,
-        Graphics.FONT_NUMBER_HOT,
-        Graphics.FONT_NUMBER_MEDIUM,
-        Graphics.FONT_NUMBER_MILD
-    ] as Array<Graphics.FontType>;
-
+    // Font cache: recomputed only when the size setting or the power mode changes.
+    private var _cachedKey as Number = -1;
     private var _timeFont as Graphics.FontType = Graphics.FONT_NUMBER_MEDIUM;
+    private var _smallFont as Graphics.FontType = Graphics.FONT_SMALL;
     private var _inLowPower as Boolean = false;
 
     function initialize() {
         WatchFace.initialize();
     }
 
-    //! Pick the biggest time font that fits. Done once, because the screen size never changes.
     function onLayout(dc as Dc) as Void {
-        var maxWidth = dc.getWidth() * TIME_MAX_WIDTH_PERCENT / 100;
-        _timeFont = TIME_FONTS[TIME_FONTS.size() - 1];
-        for (var i = 0; i < TIME_FONTS.size(); i++) {
-            var font = TIME_FONTS[i];
-            // "00" is used as a representative pair of digits so the size does not depend on the minute.
-            var pairWidth = dc.getTextWidthInPixels("00", font);
-            var gap = colonGap(dc.getFontHeight(font));
-            if (pairWidth * 2 + gap <= maxWidth) {
-                _timeFont = font;
-                break;
-            }
-        }
+        _cachedKey = -1;
     }
 
     function onUpdate(dc as Dc) as Void {
@@ -68,45 +53,38 @@ class NoirTimeView extends WatchUi.WatchFace {
         }
 
         var lowPower = isLowPower();
-        var timeColor = readTimeColor();
+        var size = NoirSettings.timeSize();
+        chooseFonts(dc, size, lowPower);
+
+        var hourColor = NoirSettings.hourColor();
+        var minuteColor = NoirSettings.minuteColor();
+        var colonColor = (hourColor == minuteColor) ? hourColor : COLOR_TEXT;
         var textColor = COLOR_TEXT;
-        var timeFont = _timeFont;
-        var smallFont = Graphics.FONT_SMALL;
         var centerX = dc.getWidth() / 2;
         var centerY = dc.getHeight() / 2;
 
         if (lowPower) {
-            // Burn-in protection: smaller, dimmer, and shifted on a 4-step cycle (one step per minute).
+            // Burn-in protection: dimmer, and shifted on a 4-step cycle (one step per minute).
             var phase = System.getClockTime().min % 4;
             centerX += (phase == 0 || phase == 3) ? -AOD_SHIFT_PIXELS : AOD_SHIFT_PIXELS;
             centerY += (phase < 2) ? -AOD_SHIFT_PIXELS : AOD_SHIFT_PIXELS;
-            timeColor = scaleColor(timeColor, AOD_TIME_BRIGHTNESS_PERCENT);
+            hourColor = scaleColor(hourColor, AOD_TIME_BRIGHTNESS_PERCENT);
+            minuteColor = scaleColor(minuteColor, AOD_TIME_BRIGHTNESS_PERCENT);
+            colonColor = (colonColor == COLOR_TEXT) ? COLOR_TEXT_AOD : scaleColor(colonColor, AOD_TIME_BRIGHTNESS_PERCENT);
             textColor = COLOR_TEXT_AOD;
-            timeFont = Graphics.FONT_NUMBER_MILD;
-            smallFont = Graphics.FONT_XTINY;
         }
 
-        var timeHeight = dc.getFontHeight(timeFont);
-        var smallHeight = dc.getFontHeight(smallFont);
-        var spacing = dc.getHeight() * 3 / 100;
+        var timeHeight = dc.getFontHeight(_timeFont);
+        var smallHeight = dc.getFontHeight(_smallFont);
+        var spacing = rowSpacing(dc);
 
-        drawTime(dc, centerX, centerY, timeFont, timeHeight, timeColor);
+        drawTime(dc, centerX, centerY, timeHeight, hourColor, minuteColor, colonColor);
 
         dc.setColor(textColor, Graphics.COLOR_BLACK);
-        dc.drawText(
-            centerX,
-            centerY - timeHeight / 2 - spacing - smallHeight / 2,
-            smallFont,
-            dateText(),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
-        );
-        dc.drawText(
-            centerX,
-            centerY + timeHeight / 2 + spacing + smallHeight / 2,
-            smallFont,
-            stepsText(),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
-        );
+        dc.drawText(centerX, centerY - timeHeight / 2 - spacing - smallHeight / 2, _smallFont, dateText(),
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.drawText(centerX, centerY + timeHeight / 2 + spacing + smallHeight / 2, _smallFont, stepsText(),
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
     function onEnterSleep() as Void {
@@ -119,9 +97,73 @@ class NoirTimeView extends WatchUi.WatchFace {
         WatchUi.requestUpdate();
     }
 
+    //! Font candidates per size, largest first. The first candidate that fits the screen is used.
+    //! Always-on mode is capped at FONT_NUMBER_MILD to keep the lit area small (D-09, D-17).
+    private function timeFontCandidates(size as Number, lowPower as Boolean) as Array<Graphics.FontType> {
+        if (lowPower) {
+            if (size == NoirSettings.SIZE_SMALL) {
+                return [Graphics.FONT_LARGE] as Array<Graphics.FontType>;
+            }
+            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
+        }
+        if (size == NoirSettings.SIZE_SMALL) {
+            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
+        }
+        if (size == NoirSettings.SIZE_LARGE) {
+            return [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM,
+                    Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
+        }
+        return [Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
+    }
+
+    private function chooseFonts(dc as Dc, size as Number, lowPower as Boolean) as Void {
+        var key = size * 2 + (lowPower ? 1 : 0);
+        if (key == _cachedKey) {
+            return;
+        }
+        _cachedKey = key;
+        _smallFont = lowPower ? Graphics.FONT_XTINY : Graphics.FONT_SMALL;
+        var candidates = timeFontCandidates(size, lowPower);
+        _timeFont = candidates[candidates.size() - 1];
+        for (var i = 0; i < candidates.size(); i++) {
+            if (fits(dc, candidates[i], _smallFont)) {
+                _timeFont = candidates[i];
+                return;
+            }
+        }
+    }
+
+    //! True if a point at horizontal half-width halfW and vertical offset dy from the centre is inside
+    //! the round screen minus EDGE_MARGIN. Integer maths only (squares), no square roots.
+    private function insideCircle(dc as Dc, halfW as Number, dy as Number) as Boolean {
+        var radius = dc.getWidth() / 2 - EDGE_MARGIN;
+        return halfW * halfW + dy * dy <= radius * radius;
+    }
+
+    //! Checks the whole block (date / time / steps) for a time font against the round screen:
+    //! the outer corners of each row's box must be inside the circle. Rows are stacked without overlap
+    //! by construction (each row is placed below the previous one's box plus spacing).
+    private function fits(dc as Dc, timeFont as Graphics.FontType, smallFont as Graphics.FontType) as Boolean {
+        var timeHeight = dc.getFontHeight(timeFont);
+        var smallHeight = dc.getFontHeight(smallFont);
+        var spacing = rowSpacing(dc);
+        var timeHalfWidth = (dc.getTextWidthInPixels("00", timeFont) * 2 + colonGap(timeHeight)) / 2;
+        var dateHalfWidth = dc.getTextWidthInPixels(SAMPLE_DATE, smallFont) / 2;
+        var stepsHalfWidth = dc.getTextWidthInPixels(SAMPLE_STEPS, smallFont) / 2;
+        var rowOuterEdge = timeHeight / 2 + spacing + smallHeight;
+        return insideCircle(dc, timeHalfWidth, timeHeight / 2)
+            && insideCircle(dc, dateHalfWidth, rowOuterEdge)
+            && insideCircle(dc, stepsHalfWidth, rowOuterEdge);
+    }
+
+    private function rowSpacing(dc as Dc) as Number {
+        return dc.getHeight() * 3 / 100;
+    }
+
     //! Draws "HH:MM" with the colon fixed at (centerX, centerY). The colon is two filled circles,
     //! because colon support in the number-only fonts is not documented.
-    private function drawTime(dc as Dc, centerX as Number, centerY as Number, font as Graphics.FontType, fontHeight as Number, color as Number) as Void {
+    private function drawTime(dc as Dc, centerX as Number, centerY as Number, fontHeight as Number,
+            hourColor as Number, minuteColor as Number, colonColor as Number) as Void {
         var clock = System.getClockTime();
         var hour = clock.hour;
         var is24Hour = System.getDeviceSettings().is24Hour;
@@ -138,9 +180,11 @@ class NoirTimeView extends WatchUi.WatchFace {
         var dotRadius = colonRadius(fontHeight);
         var dotOffset = fontHeight * 14 / 100;
 
-        dc.setColor(color, Graphics.COLOR_BLACK);
-        dc.drawText(centerX - gap / 2, centerY, font, hourText, Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.drawText(centerX + gap / 2, centerY, font, minuteText, Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.setColor(hourColor, Graphics.COLOR_BLACK);
+        dc.drawText(centerX - gap / 2, centerY, _timeFont, hourText, Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.setColor(minuteColor, Graphics.COLOR_BLACK);
+        dc.drawText(centerX + gap / 2, centerY, _timeFont, minuteText, Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.setColor(colonColor, Graphics.COLOR_BLACK);
         dc.fillCircle(centerX, centerY - dotOffset, dotRadius);
         dc.fillCircle(centerX, centerY + dotOffset, dotRadius);
     }
@@ -176,15 +220,6 @@ class NoirTimeView extends WatchUi.WatchFace {
             result += (digits.substring(i, i + 1) as String);
         }
         return result;
-    }
-
-    //! Reads the user's colour. Falls back to white if the stored value is not a number.
-    private function readTimeColor() as Number {
-        var value = Application.Properties.getValue("TimeColor");
-        if (value instanceof Number) {
-            return value as Number;
-        }
-        return Graphics.COLOR_WHITE;
     }
 
     private function scaleColor(color as Number, percent as Number) as Number {

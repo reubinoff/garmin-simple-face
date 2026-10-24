@@ -1,6 +1,11 @@
 <strings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://developer.garmin.com/downloads/connect-iq/resources.xsd">
     <string id="AppName">Noir Time</string>
-    <string id="TimeColorTitle">צבע השעה</string>
+    <string id="TimeSizeTitle">גודל השעה</string>
+    <string id="SizeSmall">קטן</string>
+    <string id="SizeMedium">בינוני</string>
+    <string id="SizeLarge">גדול</string>
+    <string id="HourColorTitle">צבע השעות</string>
+    <string id="MinuteColorTitle">צבע הדקות</string>
     <string id="ColorWhite">לבן</string>
     <string id="ColorCyan">תכלת</string>
     <string id="ColorGreen">ירוק</string>

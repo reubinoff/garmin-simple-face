@@ -19,7 +19,14 @@ class NoirTimeApp extends Application.AppBase {
         return [ new NoirTimeView() ];
     }
 
-    //! Called when the user changes a setting in Garmin Connect; redraw with the new colour.
+    //! On-device settings (time size, hour colour, minute colour), shown by the system from the
+    //! Watch Face menu. API 3.2.0, "only applicable to watch faces and data fields".
+    function getSettingsView() as [Views] or [Views, InputDelegates] or Null {
+        var menu = new NoirTimeSettingsMenu();
+        return [ menu, new NoirTimeSettingsDelegate(menu) ];
+    }
+
+    //! Called when the user changes a setting in Garmin Connect; redraw with the new values.
     function onSettingsChanged() as Void {
         WatchUi.requestUpdate();
     }
