@@ -1,11 +1,12 @@
 # Noir Time - Garmin fēnix® 9 Pro 47mm watch face
 
 A very simple Connect IQ watch face: **black background, only the date, the time and today's steps.**
-The time colour is chosen by the user in Garmin Connect (Connect IQ settings).
+Settings (on the phone in Garmin Connect / Connect IQ, **or on the watch** from the Watch Face menu): time size (Small / Medium / Large),
+hour colour and minute colour (8 colours each).
 
 ```
         Fri 23 Oct
-          12:34        <- your colour
+          12:34        <- hours and minutes each in your colour
           8,432
 ```
 
@@ -13,6 +14,7 @@ The time colour is chosen by the user in Garmin Connect (Connect IQ settings).
 * No permissions, no network, no background service.
 * Always-on mode: smaller, dimmer, and shifted every minute for AMOLED burn-in protection.
 * Hebrew + English settings.
+* Always-on keeps the time at most `NUMBER_MILD` size whatever the size setting (burn-in limits).
 
 > ### Status - read this first
 > The code, resources, scripts and CI were written against the official SDK 9.3.0 documentation, template and sample projects, and
@@ -28,9 +30,11 @@ Design decisions and the official source for every technical choice: **[DECISION
 ```
 manifest.xml            app id, device (fenix9pro47mm), minApiLevel 5.0.0, no permissions, languages eng+heb
 monkey.jungle           project.manifest + project.typecheck = strict
-source/NoirTimeApp.mc   AppBase (settings change -> redraw)
+source/NoirTimeApp.mc   AppBase (settings change -> redraw, getSettingsView -> on-watch menu)
+source/NoirSettings.mc  setting keys, values, labels (read/write helpers)
+source/NoirTimeSettingsMenu.mc  on-watch settings menu (Menu2)
 source/NoirTimeView.mc  the watch face
-resources/              strings, properties.xml (TimeColor), settings.xml (colour list), launcher icon 65x65
+resources/              strings, properties.xml (TimeSize, HourColor, MinuteColor), settings.xml (lists), launcher icon 65x65
 resources-heb/          Hebrew settings strings
 scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh
 .github/workflows/      build.yml  (static checks + signed build + artifacts)
@@ -65,7 +69,8 @@ scripts/run-simulator.sh        # builds a debug PRG, starts `connectiq`, runs `
 ```
 Check, and take real screenshots into `docs/screenshots/`:
 1. Time/date/steps centred, nothing cut off by the round edge.
-2. Change the `TimeColor` application property/setting in the simulator's own settings editor (the docs I used do not name that menu - look in the simulator's menus) and confirm the face updates.
+2. Change `TimeSize`, `HourColor` and `MinuteColor` with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 3 sizes in high power and always-on: nothing may overlap or touch the round edge.
+   On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Noir Time* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
 3. Always-on: switch the simulated display to low power (menu not named in the docs I used) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
 4. 12h/24h: change the simulated time format.
 5. Steps: the docs name **Simulation -> Activity Data** for simulated activity data; check the steps text with 0, 999, 1 000, 12 345 and 100 000+ values.
@@ -102,7 +107,10 @@ Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and G
 Uploading and accepting the developer agreement is an action only you can do under your Garmin developer account.
 
 ## Changing things
-* Colours: `resources/settings/settings.xml` (+ strings in `resources*/strings/strings.xml`). The `TimeColor` default must be one of the list values.
+* Colours / sizes: `resources/settings/settings.xml` (phone) **and** `source/NoirSettings.mc` (watch menu) - keep both lists identical; labels in `resources*/strings/strings.xml`.
+  Defaults in `resources/properties/properties.xml` must be one of the list values.
+* Size -> font mapping and the fit check: `timeFontCandidates()` / `fits()` in `source/NoirTimeView.mc` (DECISIONS.md D-17).
+* Colon colour rule: `onUpdate()` (D-15).
 * Layout constants: top of `source/NoirTimeView.mc`.
 * Steps label, 12/24h handling: `stepsText()`, `drawTime()`.
 

@@ -57,8 +57,10 @@ Highest API level among the APIs used (from the API docs, "Since: API Level"):
 |---|---|
 | `System.getDisplayMode()`, `System.DISPLAY_MODE_LOW_POWER` | **5.0.0** (listed as supported on fēnix® 9 Pro 47mm) |
 | `Dc.setAntiAlias()` | 3.2.0 (listed as supported on fēnix® 9 Pro 47mm) |
-| `Application.Properties.getValue()` | 2.4.0 |
-| `ActivityMonitor.getInfo()`, `Info.steps`, `Gregorian.info`, `System.getClockTime`, `Dc.getTextDimensions/getFontHeight/drawText/fillCircle` | 1.0.0 |
+| `AppBase.getSettingsView()` | 3.2.0 (listed as supported on fēnix® 9 Pro 47mm) |
+| `WatchUi.Menu2`, `MenuItem`, `Menu2InputDelegate` (`addItem`, `findItemById`, `updateItem`, `getId`, `setSubLabel`, `onSelect`) | 3.0.0 (all three pages list fēnix® 9 Pro 47mm) |
+| `Application.Properties.getValue()` / `setValue()` | 2.4.0 |
+| `ActivityMonitor.getInfo()`, `Info.steps`, `Gregorian.info`, `System.getClockTime`, `Dc.getTextDimensions/getTextWidthInPixels/getFontHeight/drawText/fillCircle/setColor` | 1.0.0 |
 | `DeviceSettings.requiresBurnInProtection` (not used in code; documents the rule) | 3.0.12 |
 
 The device's own API level is stored in the device files (`compiler.json`), which are behind a Garmin login (gap G-1). The compiler checks
@@ -92,16 +94,29 @@ Benefit: no permission prompt, nothing to justify to reviewers. Status: VERIFIED
 | Steps | `ActivityMonitor.getInfo().steps` | "step count since midnight for the current day"; **may be null** -> shown as `--` |
 Status: VERIFIED-DOC (`api-docs/Toybox/System.html`, `.../ActivityMonitor/Info.html`, `.../Time/Gregorian.html`, `.../System/DeviceSettings.html`).
 
-## D-08 User setting for the time colour
+## D-08 User settings: time size, hour colour, minute colour
 
-* Schema follows `core-topics/properties-and-app-settings/` and the SDK template `resources/settings/{properties,settings}.xml`:
-  a `number` property `TimeColor` (default `0xFFFFFF`) shown as a `list` setting; `listEntry value` is `0xRRGGBB`.
-* Read with `Application.Properties.getValue("TimeColor")` (API 2.4.0; throws if the key is missing - it is defined in `properties.xml`).
-  `AppBase.onSettingsChanged()` calls `WatchUi.requestUpdate()` (same as template).
+* Schema follows `core-topics/properties-and-app-settings/` (<https://developer.garmin.com/connect-iq/core-topics/properties-and-app-settings/>) and the
+  SDK template `resources/settings/{properties,settings}.xml`. Three `number` properties, each shown as a `list` setting:
+
+  | Property | Values | Default |
+  |---|---|---|
+  | `TimeSize` | 0 Small, 1 Medium, 2 Large | 1 (Medium) |
+  | `HourColor` | 8 colours, `listEntry value` = `0xRRGGBB` | `0xFFFFFF` white |
+  | `MinuteColor` | same 8 colours | `0xFFFFFF` white |
+
+* Read with `Application.Properties.getValue(key)` and (on-device menu, D-16) written with `Properties.setValue(key, value)`; both API 2.4.0 and both throw
+  if the key is not defined (<https://developer.garmin.com/connect-iq/api-docs/Toybox/Application/Properties.html>), so every key is in `properties.xml`.
+  `source/NoirSettings.mc` is the single code-side definition (keys, values, labels); it falls back to the default if a stored value is not a `Number`.
+* The value lists exist twice (settings.xml for the phone, `NoirSettings.mc` for the watch menu) because a settings list is not readable from code per the docs read;
+  a check script compared both lists on the box (identical).
+* `AppBase.onSettingsChanged()` calls `WatchUi.requestUpdate()` (same as the AppBase doc example). The view also reads the properties on every `onUpdate()`, so a
+  change made in the on-device menu is shown even without that callback (whether the system calls `onSettingsChanged()` after an on-device change is not documented).
 * The 8 colours are my design choice (bright, saturated, readable on black). The display has 65 536 colours (D-01) so colours are quantised
-  to RGB565 by the hardware; visible differences vs. the hex values are expected to be negligible but have not been viewed on a real screen.
+  to RGB565 by the hardware; not viewed on a real screen.
+* Simulator testing: "File > Edit Persistent Storage > Edit Application.Properties data" (documented in the same page, section "Testing App Settings").
 * All `resources*/**/*.xml` validate against `sdk/bin/resources.xsd` (VERIFIED-ON-BOX, `lxml` XMLSchema).
-Status: VERIFIED-DOC / VERIFIED-SDK; runtime behaviour in Garmin Connect **UNVERIFIED** (needs device/simulator).
+Status: VERIFIED-DOC / VERIFIED-SDK; runtime behaviour **UNVERIFIED** (needs device/simulator).
 
 ## D-09 Always-on (low power) mode and AMOLED burn-in
 
@@ -114,19 +129,19 @@ Rules (primary sources):
 * The docs do not say which of the two rules (pixel-count or luminance) the fēnix 9 Pro applies, so the design satisfies **both**.
 
 What the code does in low power (`DISPLAY_MODE_LOW_POWER`):
-* time in `FONT_NUMBER_MILD` (113 px) at 60 % brightness, date and steps in `FONT_XTINY` (37 px) dark grey -> far less lit area than high-power mode;
+* time at 60 % brightness, at most `FONT_NUMBER_MILD` (113 px) whatever the size setting (Small uses `FONT_LARGE`, 71 px; see D-17); date and steps in `FONT_XTINY` (37 px) dark grey -> far less lit area than high-power mode;
 * whole block shifted +/-8 px on a 4-minute cycle (`min % 4`), so consecutive minutes differ by 16 px; stroke widths are below that, so a pixel is not
   lit in two consecutive minutes;
 * nothing static is drawn (no ticks, no labels); background pure black;
 * `onPartialUpdate` is **not** implemented: the FAQ says AMOLED watch faces must not use per-second partial updates.
-* An estimate with a stand-in font (`docs/mockups/mockup_always_on.png`, DejaVu Bold, heavier than Rajdhani) lit ~5.8 % of the pixels. That is an estimate with a different font, **not a measurement**.
+* An estimate with a stand-in font (`docs/mockups/mockup_always_on.png`, DejaVu Bold, heavier than Rajdhani) lit ~5.7 % of the pixels (Medium/Large) and ~2.8 % (Small) - `docs/mockups/mockup_always_on_sizes.png`. That is an estimate with a different font, **not a measurement**.
 Status: rules VERIFIED-DOC; compliance **UNVERIFIED** until checked with the simulator heat map or on the watch (gap G-2).
 
 ## D-10 Rendering approach
 
 * All coordinates are derived from `dc.getWidth()/getHeight()` and font heights; nothing is hard-coded to 454.
-* Time font chosen once in `onLayout`: the largest of `FONT_NUMBER_THAI_HOT, HOT, MEDIUM, MILD` where `2 x width("00") + colon gap <= 86 %` of the screen width
-  (86 % is my design margin: a chord at +/-75 px from centre of a 454 px circle is ~428 px). Chosen once so the size does not change between minutes.
+* Time font: chosen from the size setting with a fit check against the round screen (D-17); cached and recomputed only when the size setting or the power
+  mode changes, so the size does not change between minutes.
 * The colon is drawn with two `fillCircle` calls: the docs do not state that the number-only fonts contain ":" (gap G-4), so it is not relied on.
 * `dc.setAntiAlias(true)` for the circles (guarded with `has`, per the Dc doc).
 * Colon is fixed at the screen centre; hours are right-aligned to it, minutes left-aligned, so the colon never jumps.
@@ -170,6 +185,73 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 
 ---
 
+## D-15 Separate hour and minute colours; colon colour
+
+* Owner request: hours and minutes colourable separately. `drawTime()` already drew hours and minutes as two `drawText` calls (hours right-aligned to the colon,
+  minutes left-aligned), so each simply gets its own `dc.setColor` (`Dc.setColor`, API 1.0.0, <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>).
+* **Colon colour (design choice):** if hour colour == minute colour, the colon uses that colour (the default all-white face looks exactly as before);
+  if they differ, the colon is the neutral grey of the date/steps text (`0xB0B0B0`), so it does not "belong" to either half. In always-on mode it is dimmed like the rest.
+* Same 8-colour palette for both. Status: API VERIFIED-DOC; look **UNVERIFIED** (mockups only).
+
+## D-16 On-device settings: `AppBase.getSettingsView()` + `Menu2` (implemented); native watch face editor (evaluated, not implemented)
+
+Doc findings:
+* **`AppBase.getSettingsView()`** - "Since API level 3.2.0", "only applicable to watch faces and data fields"; returns `[Views] or [Views, InputDelegates] or Null`;
+  the fēnix® 9 Pro 47mm is in its "Supported Devices" list. <https://developer.garmin.com/connect-iq/api-docs/Toybox/Application/AppBase.html>
+* Properties guide, section "On Device Watch Face and Data Field Settings" (since 3.2.0): watch faces may not accept input or push views themselves, but may implement
+  `getSettingsView()`, which "functions similarly to `getInitialView()`"; "Watch face configuration is available to the user in the system Watch Face menu."
+  <https://developer.garmin.com/connect-iq/core-topics/properties-and-app-settings/>
+* SDK sample `samples/Analog` (a watch face) implements `getSettingsView()` (a View + BehaviorDelegate whose `onMenu()` pushes a `Menu2`).
+* **Native watch face editor / `WatchFaceConfig`** - "Since API level 5.1.0. The fēnix 8 and newer wearables have an on-device watch face editor"; a `<watchface-config>`
+  resource defines styles, complications ("Data"), data colours and accent colours; read with `WatchFaceConfig.getSettings(null)`; editor hooks
+  `WatchFaceDelegate.onTap / getComplicationDrawable / onWatchFaceConfigEdited` (5.1.0); up to four saved configurations per face.
+  <https://developer.garmin.com/connect-iq/core-topics/editing-watch-faces-on-device/>, <https://developer.garmin.com/connect-iq/api-docs/Toybox/Application/WatchFaceConfig.html>
+  (the `WatchFaceConfig` page lists the fēnix® 9 Pro 47mm). All URLs above returned HTTP 200 on 2026-10-24.
+
+Decision:
+* **Implemented `getSettingsView()`** returning `[NoirTimeSettingsMenu (a WatchUi.Menu2), NoirTimeSettingsDelegate (a WatchUi.Menu2InputDelegate)]`.
+  Types: `Menu2` inherits from `WatchUi.View`, and the SDK's `InputDelegates` typedef includes `Menu2InputDelegate` (WatchUi.html), so the pair matches the documented return type.
+  I return the menu directly instead of the sample's "Press Menu for settings" screen - one less step, same documented types.
+  Menu: `Menu2.initialize({:title})`, `addItem`, `findItemById`, `updateItem`; `MenuItem(label, subLabel, identifier, options)`, `getId`, `setSubLabel` (all API 3.0.0).
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/Menu2.html>, <https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/MenuItem.html>,
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/Menu2InputDelegate.html>
+* Items: Time Size, Hour Color, Minute Color; each shows the current value as its sub-label. **Selecting an item cycles to the next value** and saves it with
+  `Properties.setValue` (the same properties the phone edits, so phone and watch settings never disagree).
+  Why cycling instead of sub-menus: `WatchUi.popView()` is documented to throw `OperationNotAllowedException` "if called from ... watch face app", and the guide says
+  watch faces may not push views; whether that also applies inside the settings view is **not documented**. Cycling needs no `pushView`/`popView` at all.
+  Back is left to the documented default: "If not overridden, `onBack()` will pop the active view."
+* **Not implemented: `WatchFaceConfig`**. Reasons: (1) its model is styles / complication data / one data colour / one accent colour - hour colour, minute colour and
+  size would have to be mapped onto "accent" and "data" colours and "styles", i.e. a re-interpretation of fields the docs define for other purposes; (2) it is a second,
+  separate settings store (per saved configuration) next to the phone properties, and the docs do not say how the two interact; (3) the face has no complications;
+  (4) it needs API 5.1.0, while the device's API level is not stated (G-9) and `minApiLevel` is 5.0.0. It can be added later behind `has` checks.
+Status: VERIFIED-DOC; menu location on the watch and behaviour **UNVERIFIED** (G-11, G-12).
+
+## D-17 Time size Small / Medium / Large, fit check
+
+Font heights on the fēnix® 9 Pro 47mm (device reference page): `FONT_LARGE` 71, `NUMBER_MILD` 113, `NUMBER_MEDIUM` 153, `NUMBER_HOT` 173, `NUMBER_THAI_HOT` 210 px;
+`FONT_SMALL` 53 and `FONT_XTINY` 37 px for date/steps.
+
+| Setting | High power (first that fits) | Always-on (first that fits) |
+|---|---|---|
+| Small | `NUMBER_MILD`, `LARGE` | `LARGE` |
+| Medium (default) | `NUMBER_MEDIUM`, `NUMBER_MILD` | `NUMBER_MILD`, `LARGE` |
+| Large | `NUMBER_THAI_HOT`, `NUMBER_HOT`, `NUMBER_MEDIUM`, `NUMBER_MILD` | `NUMBER_MILD`, `LARGE` |
+
+* **Fit check** (`fits()` in `NoirTimeView.mc`): rows are stacked date / time / steps with 3 % spacing, so they never overlap by construction. A font is accepted only if
+  the corners of the time box (`2 x width("00") + colon gap` wide, font height tall) and of the date and steps boxes are inside the circle of radius `width/2 - 12 px`.
+  Widths are measured with `Dc.getTextWidthInPixels` and heights with `Dc.getFontHeight` (API 1.0.0) on the real device fonts at run time; integer maths only.
+  The date box uses the sample "Wed 30 Sep" and the steps box "100,000"; a longer localised date could still be wider (G-13).
+* So "Large" means "the largest that fits"; on this screen it may end up the same as Medium - the docs give heights but no glyph widths, so which one wins is not knowable before running (G-13).
+* **Always-on** is capped at `NUMBER_MILD` for all sizes to keep the lit area within the burn-in limits (D-09); Small uses the 71 px `FONT_LARGE` so the setting still has a visible effect. The 12 px edge margin also covers the 8 px AOD shift.
+Status: API VERIFIED-DOC; actual sizes **UNVERIFIED**.
+
+## D-18 Migration from `TimeColor`
+
+* The old `TimeColor` property is removed; `HourColor` and `MinuteColor` default to its old default (white), so the default face is unchanged.
+* No value migration code: the app has never been published or installed (it has never been compiled, G-1), so no user has a stored `TimeColor`. The docs read do not say
+  what happens to stored values of a removed property after an app update, so if this matters later, keep the old key and copy it once (`Properties.getValue`/`setValue`).
+Status: design decision; based on the project state, not on runtime behaviour.
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -184,6 +266,10 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 | G-8 | CI login with Garmin account may hit MFA/IP blocking | undocumented third-party pattern | fall back to building locally (README "Option B") |
 | G-9 | Device's API level not stated in the device page | stored in login-gated device files | the first build tells you (compiler error if `minApiLevel` is too high) |
 | G-10 | SDK licence | The agreement must be read and accepted by you (a person) | `connect-iq-sdk-manager agreement view`, then set the repo variable `CIQ_AGREEMENT_HASH` |
+| G-11 | Exact place of the on-device settings on the fēnix 9 Pro | docs only say "the system Watch Face menu"; no fēnix 9 manual was checked | look in the watch-face menu (where faces are chosen/edited) |
+| G-12 | Coexistence of `getSettingsView()` with the native editor on fēnix 8+/9; whether `onSettingsChanged()` fires after an on-device change; whether `MenuItem.setSubLabel` + `Menu2.updateItem` refresh the visible menu immediately | not documented | test on the simulator/watch; the face re-reads properties each update anyway |
+| G-13 | Which font each size really gets; long localised dates (e.g. Hebrew) wider than the sample "Wed 30 Sep" | font widths not documented; needs device files | check all 3 sizes x 2 modes in the simulator, also in Hebrew |
+| G-14 | Hebrew in the menu sub-labels / phone settings list | needs device/phone | look at both with the language set to Hebrew |
 
 ## What WAS verified in this session
 
@@ -192,3 +278,5 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 * Every API used exists in the SDK's own API documentation with the API level shown in D-04, and `getDisplayMode`/`setAntiAlias` list the fēnix® 9 Pro 47mm as supported.
 * Shell scripts parse (`bash -n`).
 * Launcher icon is 65 x 65 PNG (D-01).
+* The colour list in `settings.xml` equals `NoirSettings.colorValues()`; every `Rez.Strings`/`@Strings` id used exists in both English and Hebrew strings (script check).
+* All doc URLs cited in D-08, D-15 - D-17 returned HTTP 200 (2026-10-24).
