@@ -101,9 +101,9 @@ Status: VERIFIED-DOC (`api-docs/Toybox/System.html`, `.../ActivityMonitor/Info.h
 
   | Property | Values | Default |
   |---|---|---|
-  | `TimeSize` | 0 Small, 1 Medium, 2 Large | 1 (Medium) |
-  | `HourColor` | 8 colours, `listEntry value` = `0xRRGGBB` | `0xFFFFFF` white |
-  | `MinuteColor` | same 8 colours | `0xFFFFFF` white |
+  | `TimeSize` | 0 Small, 1 Medium, 2 Large, 3 X-Large, 4 XX-Large (D-24) | 1 (Medium) |
+  | `HourColor` | 16 colours (D-25), `listEntry value` = `0xRRGGBB` | `0xFFFFFF` white |
+  | `MinuteColor` | same 16 colours | `0xFFFFFF` white |
 
 * Read with `Application.Properties.getValue(key)` and (on-device menu, D-16) written with `Properties.setValue(key, value)`; both API 2.4.0 and both throw
   if the key is not defined (<https://developer.garmin.com/connect-iq/api-docs/Toybox/Application/Properties.html>), so every key is in `properties.xml`.
@@ -113,7 +113,7 @@ Status: VERIFIED-DOC (`api-docs/Toybox/System.html`, `.../ActivityMonitor/Info.h
 * Settings are **cached** in `NoirSettings` (read once, D-21). The cache is refreshed by `AppBase.onSettingsChanged()` (phone change; then `WatchUi.requestUpdate()`,
   as in the AppBase doc example), by the on-device menu right after its own `Properties.setValue`, and in `NoirTimeView.onShow()`. So a menu change is shown even if the
   system does not call `onSettingsChanged()` after an on-device change (not documented, G-12).
-* The 8 colours are my design choice (bright, saturated, readable on black). The display has 65 536 colours (D-01) so colours are quantised
+* The colours (8, extended to 16 in D-25) are my design choice (bright, saturated, readable on black). The display has 65 536 colours (D-01) so colours are quantised
   to RGB565 by the hardware; not viewed on a real screen.
 * Simulator testing: "File > Edit Persistent Storage > Edit Application.Properties data" (documented in the same page, section "Testing App Settings").
 * All `resources*/**/*.xml` validate against `sdk/bin/resources.xsd` (VERIFIED-ON-BOX, `lxml` XMLSchema).
@@ -188,7 +188,7 @@ Keep the developer key: "You will need to use the same key to sign updates to an
   minutes left-aligned), so each simply gets its own `dc.setColor` (`Dc.setColor`, API 1.0.0, <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>).
 * **Colon colour (design choice):** if hour colour == minute colour, the colon uses that colour (the default all-white face looks exactly as before);
   if they differ, the colon is the neutral grey of the date/steps text (`0xB0B0B0`), so it does not "belong" to either half. In always-on mode it is drawn as an outline ring (D-19).
-* Same 8-colour palette for both. Status: API VERIFIED-DOC; look **UNVERIFIED** (mockups only).
+* Same palette for both (16 colours since D-25). Status: API VERIFIED-DOC; look **UNVERIFIED** (mockups only).
 
 ## D-16 On-device settings: `AppBase.getSettingsView()` + `Menu2` (implemented); native watch face editor (evaluated, not implemented)
 
@@ -223,7 +223,7 @@ Decision:
   (4) it needs API 5.1.0, while the device's API level is not stated (G-9) and `minApiLevel` is 5.0.0. It can be added later behind `has` checks.
 Status: VERIFIED-DOC; menu location on the watch and behaviour **UNVERIFIED** (G-11, G-12).
 
-## D-17 Time size Small / Medium / Large, fit check
+## D-17 Time size Small / Medium / Large, fit check (X-Large / XX-Large and the digit-box fit: D-24)
 
 Font heights on the fēnix® 9 Pro 47mm (device reference page): `FONT_LARGE` 71, `NUMBER_MILD` 113, `NUMBER_MEDIUM` 153, `NUMBER_HOT` 173, `NUMBER_THAI_HOT` 210 px;
 `FONT_SMALL` 53 and `FONT_XTINY` 37 px for date/steps.
@@ -232,7 +232,9 @@ Font heights on the fēnix® 9 Pro 47mm (device reference page): `FONT_LARGE` 71
 |---|---|
 | Small | `NUMBER_MILD`, `LARGE` |
 | Medium (default) | `NUMBER_MEDIUM`, `NUMBER_MILD` |
-| Large | `NUMBER_THAI_HOT`, `NUMBER_HOT`, `NUMBER_MEDIUM`, `NUMBER_MILD` |
+| Large | `NUMBER_HOT`, `NUMBER_MEDIUM`, `NUMBER_MILD` (since D-24; before: `THAI_HOT` first, which never fitted) |
+| X-Large (D-24) | `NUMBER_THAI_HOT`, `NUMBER_HOT`, `NUMBER_MEDIUM`, `NUMBER_MILD` |
+| XX-Large (D-24) | scalable `RobotoCondensedRegular` (fallback `BionicMedium`), largest px 240..180 that fits; else as X-Large |
 
 * **Fit check** (`NoirLayout.blockFits()`, D-20): rows are stacked date / time / steps with 3 % spacing, so they never overlap by construction. A font is accepted only if
   the corners of the time box (`2 x width("00") + colon gap` wide, font height tall) and of the date and steps boxes are inside the circle of radius `width/2 - 12 px`.
@@ -240,7 +242,7 @@ Font heights on the fēnix® 9 Pro 47mm (device reference page): `FONT_LARGE` 71
   The date box uses the sample "Wed 30 Sep" and the steps box "100,000"; a longer localised date could still be wider (G-13).
 * So "Large" means "the largest that fits"; on this screen it may end up the same as Medium - the docs give heights but no glyph widths, so which one wins is not knowable before running (G-13).
 * **Always-on** uses the same font as active mode (owner request, D-19); the 12 px edge margin covers the 8 px AOD shift plus the 3 px maximum outline (tested).
-Status: API VERIFIED-DOC; actual sizes VERIFIED-ON-BOX (D-23; font names from the fit check with the device fonts, which reproduces the real glyph heights): Small = `FONT_NUMBER_MILD`, Medium = `FONT_NUMBER_MEDIUM`, Large = `FONT_NUMBER_HOT` (`FONT_NUMBER_THAI_HOT` does not fit), all three distinct; a long Hebrew date is still open (G-13).
+Status: API VERIFIED-DOC; actual sizes VERIFIED-ON-BOX (D-23; font names from the fit check with the device fonts, which reproduces the real glyph heights): Small = `FONT_NUMBER_MILD`, Medium = `FONT_NUMBER_MEDIUM`, Large = `FONT_NUMBER_HOT` (`FONT_NUMBER_THAI_HOT` did not fit with the full-line-height check; with the digit-box check of D-24 it fits and is X-Large), all distinct; a long Hebrew date is still open (G-13).
 
 ## D-18 Migration from `TimeColor`
 
@@ -280,10 +282,12 @@ Status: rules VERIFIED-DOC; drawing API VERIFIED-DOC; numbers VERIFIED-ON-BOX in
 
 ## D-20 Fit check includes the outline
 
-`NoirLayout.blockFits(screen, timeHeight, digitsWidth, smallHeight, dateWidth, stepsWidth, pad)`: the time box is enlarged by `pad` = outline width on each side and
+`NoirLayout.blockFits(screen, timeHeight, digitHalf, digitsWidth, smallHeight, dateWidth, stepsWidth, pad)` (since D-24 with `digitHalf`, the half-height of the digit ink box): the time box is enlarged by `pad` = outline width on each side and
 the corners must be inside the circle of radius `screen/2 - 12`. Same check for both modes, so always-on never needs a smaller font. Status: unit-tested (D-22).
 
 ## D-21 Battery
+
+(Re-checked for X-Large / XX-Large and the 16-colour palette in D-26.)
 
 Documented facts:
 * Watch faces "run continuously ... A poorly designed watch face - one that takes too long to draw - can greatly degrade the battery life"; they "cannot access the compass,
@@ -339,7 +343,7 @@ Status: rules VERIFIED-DOC; code review and simulator profile VERIFIED-ON-BOX; b
   'fenix9pro47mm'" and prints `BUILD SUCCESSFUL`. It runs the parser, symbol resolution and the strict type checker against the SDK API (checked by injecting an
   undefined symbol and a type error: both fail the build). It does **not** check device-specific things (device API level, memory limit, device fonts).
   `-d fenix9pro47mm` and `-e` fail with "Invalid device id specified" / "Device id 'fenix9pro47mm' listed in the manifest file is not recognized" until the device files are installed.
-Status: host tests VERIFIED-ON-BOX (22 pass); device build and simulator unit tests VERIFIED-ON-BOX (15/15 pass, D-23).
+Status: host tests VERIFIED-ON-BOX (23 tests: 22 pass + 1 skipped without `CIQ_RESOURCES_XSD`, with stand-in and with device fonts); device build and simulator unit tests VERIFIED-ON-BOX (17/17 pass since D-24; 15/15 in D-23).
 
 ## D-23 Device build, simulator run, real screenshots and burn-in measurement (2026-10-24)
 
@@ -368,6 +372,94 @@ Status: host tests VERIFIED-ON-BOX (22 pass); device build and simulator unit te
   (`tests/host/test_screenshots.py`).
 Status: VERIFIED-ON-BOX.
 
+## D-24 Bigger sizes: X-Large and XX-Large (2026-10-24)
+
+Owner request: "is it possible to have bigger sizes?". Two sizes added above Large; Small/Medium/Large look exactly as before.
+
+| Setting (`TimeSize`) | Font | Source |
+|---|---|---|
+| 3 X-Large ("גדול מאוד") | `Graphics.FONT_NUMBER_THAI_HOT` - the largest system number font, 210 px (`Bionic_Medium`) | device reference font table <https://developer.garmin.com/connect-iq/device-reference/fenix9pro47mm/> |
+| 4 XX-Large ("ענק") | scalable `RobotoCondensedRegular` via `Graphics.getVectorFont({:face => ["RobotoCondensedRegular", "BionicMedium"], :size => px})`, largest px from 240 down to 180 (step 4) that fits; on the simulator 208 px | Graphics API <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics.html#getVectorFont-instance_function>, VectorFont <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/VectorFont.html>, Core Topics "Scalable Fonts" <https://developer.garmin.com/connect-iq/core-topics/graphics/> |
+
+Doc facts used:
+* `getVectorFont(options)`: "Since API Level 4.2.1" (the Core Topics page says 4.2.2), returns `VectorFont or Null`; the fēnix® 9 Pro 47mm is in its supported-device list.
+  The face may be an Array of names, "backup font faces that are acceptable ... in case the device doesn't support your preferred choice"; "Scalable fonts work with `Dc.drawText()`".
+  Scalable faces must be "published in the Device Reference as Scalable Font entries": the fēnix 9 Pro 47mm page lists `RobotoCondensedRegular` (Roboto Condensed, Scalable) and `BionicMedium` (Scalable, `Bionic_Medium`).
+  Device API level 6.0.3 (`compiler.json`) > 4.2.1, and the code still guards with `Graphics has :getVectorFont` and falls back to the X-Large list if it returns `null`.
+* `FontType` includes `VectorFont`, so `getFontHeight`, `getTextWidthInPixels`, `Graphics.getFontAscent/Descent` and `drawText` take it (Graphics/Dc API pages).
+* All URLs above returned HTTP 200 on 2026-10-24.
+
+Why these fonts (measured on the box):
+* The screen is width-limited: "00:00" must fit inside the round screen next to the date and steps rows. A Bionic vector font would only reach about 226 px
+  (+7 % over THAI_HOT). Roboto Condensed is narrower per pixel of digit height: its digits fill ~62 % of the font height and "00" is 0.84 x the font height
+  (1.35 x the digit height), Bionic ~50 % and 0.78 x (1.56 x the digit height). So its digits are the tallest that fit: **digit height ~ 128-130 px (XX-Large) vs. ~106 px (X-Large) and ~88 px (Large)** in the real simulator frames
+  (`docs/screenshots/active_x*large_*.png`). Regular (not Bold) matches the thin Bionic look and keeps the always-on outline thin.
+* **Fit check changed (D-17/D-20):** the old check used the full font line height for the time box. The digits only fill part of the box
+  (measured from the device TTFs: Bionic_Medium ink top/bottom 27.5 % / 22.9 % of the font height around the centre; Roboto Condensed 32.3 % / 30 %),
+  so THAI_HOT was rejected although its digits fit. `NoirLayout.blockFits()` now takes the digit half-height (`digitHalfHeight(fontHeight, 28 %)` for the
+  number fonts, 33 % for Roboto Condensed, both rounded up and above the measured value) plus the outline pad for the time corners; rows are still stacked on the full
+  font heights, so nothing can overlap. With this check, Small/Medium/Large still pick MILD/MEDIUM/HOT (Large's list no longer starts with THAI_HOT, which now belongs to X-Large).
+* The vector-font search and all metrics run only when the size setting changes (`updateLayout` cache, D-21); it calls `getVectorFont` at most 16 times once.
+* Memory: simulator status bar 12.2 kB (X-Large) / 12.3 kB (XX-Large) of 123.8 kB; `--build-stats`: code 4465 B, data 1990 B, PRG 22,268 B (limit for watch faces 131,072 B, `compiler.json`).
+  Scalable fonts live in the graphics pool (`simulator.json` `graphicsResourcePoolSize` 3,145,728), not in the app heap.
+* Always-on keeps the same font (D-19): the outline is 3 px for both new sizes (`outlineWidth`), the AOD shift/row mask are unchanged.
+* Burn-in for the new sizes (real simulator, Always-On frames): X-Large 3.76 - 3.78 % pixels / 2.21 - 3.48 % luminance, XX-Large 3.66 - 3.93 % / 2.24 - 3.37 %;
+  24-Hour Simulation (white/white, worst case) "no screen burn-in detected", peak luminance 3.22 % (X-Large) and 3.41 % (XX-Large) (`docs/screenshots/burnin24h_x*large_white-white.png`).
+  Font-accurate full-day model (white/white, steps 88,888): X-Large 4.80 % pixels / 4.03 % luminance, XX-Large 5.01 % / 4.27 %, no pixel on > 2 consecutive minutes. Limits 10 % / 10 % / 3 min.
+* Tests: `testFontCandidates`, `testXxlSearch`, `testVectorFontAvailable`, `testBlockFits` (simulator) and the host fit/monotonic/digit-height tests cover the new sizes.
+Status: API VERIFIED-DOC; sizes, fit, burn-in and memory VERIFIED-ON-BOX (simulator with the device fonts); look on the real watch **UNVERIFIED**.
+
+## D-25 Palette: 16 colours
+
+* `HourColor` / `MinuteColor` now offer 16 named colours (English + Hebrew labels): White 0xFFFFFF, Silver 0xC8C8C8, Red 0xFF453A, Coral 0xFF7A5C, Orange 0xFF9500,
+  Gold 0xFFB800, Yellow 0xFFD60A, Lime 0xB4F000, Green 0x30E060, Teal 0x00C9A7, Cyan 0x00D4FF, Light Blue 0x6FB8FF, Blue 0x2E6BFF, Purple 0xB388FF,
+  Magenta 0xFF2BD6, Pink 0xFF4FA0. The 8 earlier values are unchanged, so stored settings stay valid. Same list in `settings.xml` (phone) and
+  `NoirSettings.colorValues()` (watch menu), checked by a host test.
+* Colour depth: `Dc.setColor()` takes "a 24-bit RRGGBB value" (Core Topics Graphics <https://developer.garmin.com/connect-iq/core-topics/graphics/>, Dc API
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>); the device reference lists "Display Colors 65536" and `compiler.json` 16 bits per pixel,
+  so the display shows each colour quantised to RGB565. A host test checks all 16 values are valid non-zero 24-bit values **and still distinct after RGB565 quantisation**.
+  Not documented: the exact rounding the device uses (the test assumes truncation to 5/6/5 bits).
+* Always-on uses the chosen colour for the outline (D-19); see `docs/screenshots/aod_xlarge_lime-magenta.png`, `aod_xxlarge_gold-blue.png`.
+* On-watch menu: selecting Hour/Minute Color still cycles to the next value (D-16), now through 16 values. A sub-menu would be quicker to use, but `pushView` from a watch
+  face settings view is not clearly documented as allowed (D-16), so it was not changed.
+Status: VERIFIED-DOC (24-bit API, 65,536 colours); on-watch colour appearance **UNVERIFIED**.
+
+## D-26 Battery re-check for the new sizes and palette (2026-10-24)
+
+Rules re-read (all HTTP 200 on 2026-10-24):
+* Watch faces "run continuously ... A poorly designed watch face - one that takes too long to draw - can greatly degrade the battery life", and they
+  "cannot access the compass, GPS, or other sensors" (<https://developer.garmin.com/connect-iq/connect-iq-basics/app-types/>).
+* In sleep the face is updated "once each minute", no timers/animations; after a wrist raise every second for "typically about ten seconds"
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFace.html>). `onPartialUpdate` per-second updates are "no longer allowed" on AMOLED
+  and every lit pixel draws power (AMOLED FAQ <https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>).
+* Measuring with the simulator profiler and `-k` builds (<https://developer.garmin.com/connect-iq/core-topics/profiling/>).
+
+Code check (grep on `source/`, tests excluded): no `Timer`, no `onPartialUpdate`, no background service, no `Sensor`/`Position`/web request, no
+`loadResource`; `<iq:permissions/>` empty; `Properties.getValue` only in `NoirSettings.reload()` (cached); `requestUpdate` only after a settings change
+(phone or watch menu) and on enter/exit sleep (one redraw at each mode change). The palette change adds nothing at run time (a colour is a `Number`). The XX-Large vector font is looked up once per size change
+(`chooseVectorFont` called once in the profile, 0.47 ms total), never per frame.
+
+Simulator profiler (profiling builds `-k`, white/white = brightest, about 1 min active then about 7 min Always-On, *File > View Profiler*;
+`docs/screenshots/profiler_xlarge_white-white.png`, `profiler_xxlarge_white-white.png`, `profiler_xxlarge_white-white_api.png`):
+
+| Measured (simulator, host CPU) | Large (D-21) | X-Large | XX-Large |
+|---|---|---|---|
+| `onUpdate` calls / average | 145 / 13.0 ms | 63 / 14.8 ms | 64 / 19.8 ms |
+| Always-on frames | 9 | 7 | 8 |
+| Outline drawing per always-on frame (`drawOutlinedText` x 2) | 23 ms | 31 ms | 48 ms |
+| Work per always-on minute (outline + row mask 1.9 ms + clear 2.5 ms + date/steps) | ~28 ms | ~38 ms | ~55 ms |
+| Per active frame | ~12 ms | ~12 ms | ~15 ms |
+| `Dc.drawText` average | - | - | 2.66 ms (384 calls) |
+| Text rebuilds (`Gregorian.info`, `Lang.format`) | once per minute | once per minute | once per minute |
+| Runtime memory (status bar) | 11.4 kB | 12.2 kB | 12.3 kB of 123.8 kB |
+
+Reading: bigger glyphs cost more to draw, and the scalable font about twice the bitmap font in always-on (18 large `drawText` per minute for the outline).
+Still about 55 ms per minute = < 0.1 % duty in always-on, nothing per second, no sensors, no radio. These are simulator (host CPU) times; Garmin documents no
+conversion to watch time or battery %, so the daily drain on the watch is still **UNVERIFIED** (G-15). Smaller sizes stay as cheap as before.
+Possible further saving, **not done** (changes the look, owner decision): draw the outline from 4 instead of 8 offsets (about 45 % fewer `drawText` in always-on,
+slightly thinner diagonal edges); or choose Large/X-Large instead of XX-Large for the lowest always-on cost.
+Status: rules VERIFIED-DOC; code check and profiles VERIFIED-ON-BOX; watch battery % UNVERIFIED.
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -386,7 +478,7 @@ Status: VERIFIED-ON-BOX.
 | G-12 | `getSettingsView()` next to the native editor; `onSettingsChanged()` after an on-device change; immediate sub-label refresh | not documented; not exercised in the simulator yet | test on the watch |
 | G-13 | ~~Which font each size gets~~ **RESOLVED** (D-17/D-23); still open: long localised (Hebrew) dates | | check in Hebrew |
 | G-14 | Hebrew in the menu sub-labels / phone settings list | needs device/phone | look with the language set to Hebrew |
-| G-15 | Battery % per day on the watch | simulator profiler done (D-21: ~28 ms per always-on minute); Garmin gives no conversion to watch battery | wear it a day; `-k` build writes `GARMIN\APPS\LOGS\<app>.PRF` |
+| G-15 | Battery % per day on the watch | simulator profiler done (D-21: ~28 ms per always-on minute for Large; D-26: ~38 / ~55 ms for X-Large / XX-Large); Garmin gives no conversion to watch battery | wear it a day; `-k` build writes `GARMIN\APPS\LOGS\<app>.PRF` |
 | G-16 | ~~Hollow glyph rendering / `monkeydo -t` output~~ **RESOLVED** (D-23): clean hollow glyphs; summary `PASSED (passed=N, failed=0, errors=0)`, exit code 1 regardless | | |
 | G-17 | CI `build` job (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
@@ -404,3 +496,4 @@ Status: VERIFIED-ON-BOX.
 * Garmin login with the SDK manager CLI: first attempt failed (wrong password); after the password was corrected, the single retry succeeded.
 * Strict device build, `.iq` export, 15/15 simulator unit tests, real screenshots, 24-hour burn-in simulation, profiler (D-23, D-21).
 * 22 host tests pass (with stand-in and with device fonts).
+* After D-24/D-25 (sizes X-Large/XX-Large, 16 colours): strict device build + `.iq` without warnings, 17/17 simulator unit tests, 23 host tests (22 pass, 1 skipped), new real screenshots, 24-hour burn-in simulations and profiles (D-24, D-26).

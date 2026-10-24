@@ -1,8 +1,8 @@
 # Noir Time - Garmin fēnix® 9 Pro 47mm watch face
 
 A very simple Connect IQ watch face: **black background, only the date, the time and today's steps.**
-Settings (on the phone in Garmin Connect / Connect IQ, **or on the watch** from the Watch Face menu): time size (Small / Medium / Large),
-hour colour and minute colour (8 colours each).
+Settings (on the phone in Garmin Connect / Connect IQ, **or on the watch** from the Watch Face menu): time size (Small / Medium / Large / X-Large / XX-Large),
+hour colour and minute colour (16 colours each).
 
 ```
         Fri 23 Oct
@@ -13,14 +13,14 @@ hour colour and minute colour (8 colours each).
 * Target: `fenix9pro47mm` (454 x 454 round AMOLED) - nothing else.
 * No permissions, no network, no background service.
 * Always-on mode: **everything stays the same size**; the hour/minute digits and the colon are drawn as **outlines only**, date and steps dimmer.
-  Shifted every minute plus a rotating 1-in-3 row mask for AMOLED burn-in protection (DECISIONS.md D-19/D-23; measured in the simulator 2.1 - 2.7 % of pixels lit, full-day worst case 3.5 %, simulator 24-hour burn-in check: no burn-in).
+  Shifted every minute plus a rotating 1-in-3 row mask for AMOLED burn-in protection (DECISIONS.md D-19/D-23; measured in the simulator 2.1 - 3.9 % of pixels lit, full-day worst case 5.0 % (XX-Large), simulator 24-hour burn-in check: no burn-in).
 * Hebrew + English settings.
 * Battery-minded: no timers, no partial updates, no sensors/background, settings and texts cached (D-21).
 
 > ### Status - read this first
-> * **Device build done:** strict (`-l 3 -w`) build for `fenix9pro47mm` with the real device files (API level 6.0.3), `NoirTime.prg` (21 KB) and
->   store `NoirTime.iq`, no warnings. Connect IQ unit tests in the simulator: **15/15 passed**; 22 host tests pass.
-> * **Real simulator screenshots** in [`docs/screenshots/`](docs/screenshots/) (active Small/Medium/Large in two colours, always-on outline digits at
+> * **Device build done:** strict (`-l 3 -w`) build for `fenix9pro47mm` with the real device files (API level 6.0.3), `NoirTime.prg` (22 KB) and
+>   store `NoirTime.iq`, no warnings. Connect IQ unit tests in the simulator: **17/17 passed**; host tests: 22 pass, 1 skipped unless `CIQ_RESOURCES_XSD` is set.
+> * **Real simulator screenshots** in [`docs/screenshots/`](docs/screenshots/) (active Small/Medium/Large/X-Large/XX-Large in several palette colours, always-on outline digits at
 >   full size, 24-hour burn-in check, profiler). `docs/mockups/` are older drawings from the host model and are labelled as mockups.
 > * **Still open:** a day on the real watch (battery %), Hebrew date in the simulator, on-watch settings menu behaviour, CI run (DECISIONS.md gaps).
 
@@ -75,7 +75,7 @@ scripts/run-simulator.sh        # builds a debug PRG, starts `connectiq`, runs `
 ```
 Check, and take real screenshots into `docs/screenshots/`:
 1. Time/date/steps centred, nothing cut off by the round edge.
-2. Change `TimeSize`, `HourColor` and `MinuteColor` with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 3 sizes in high power and always-on: nothing may overlap or touch the round edge.
+2. Change `TimeSize`, `HourColor` and `MinuteColor` with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 5 sizes in high power and always-on: nothing may overlap or touch the round edge.
    On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Noir Time* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
 3. Always-on: digits must be the same size as in step 2, hollow (outline only); switch to always-on with **Settings > Display Mode > Always-On** (SDK 9.3.0 simulator) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
 4. 12h/24h: change the simulated time format.
@@ -93,14 +93,14 @@ xvfb-run -a scripts/run-unit-tests.sh                  # same, headless (simulat
 The host model uses stand-in OFL fonts by default. With `CIQ_DEVICE_FONTS` pointing at the fonts the SDK manager downloads
 (`device download -d fenix9pro47mm --include-fonts`; not in the repo) it uses the device's own TTFs and matches real simulator frames within 0.1 %.
 `tests/host/test_screenshots.py` checks the real screenshots (< 10 % pixels/luminance, same digit size in always-on).
-Last run: `PASSED (passed=15, failed=0, errors=0)`; note that `monkeydo -t` exits 1 even then, the script reads the summary.
+Last run: `PASSED (passed=17, failed=0, errors=0)`; note that `monkeydo -t` exits 1 even then, the script reads the summary.
 
 ## Battery
 What the face does to keep the drain low (details and doc links: DECISIONS.md D-21): no `onPartialUpdate`, no timers, no background service,
-no sensors, no permissions, system fonts only; settings cached and re-read only when they change; date/time strings rebuilt once a minute,
-the steps string only when the count changes; in always-on it draws once a minute with 2.1 - 2.7 % of the pixels lit (simulator; full-day worst case 3.5 %).
-Simulator profiler (D-21): about 28 ms of work per always-on minute, about 12 ms per active frame, date/time texts rebuilt once a minute,
-no timers or background; 11.4 kB of memory used. The battery % per day on the watch has not been measured.
+no sensors, no permissions, system fonts only (XX-Large: one scalable system font from `Graphics.getVectorFont`, looked up once per size change); settings cached and re-read only when they change; date/time strings rebuilt once a minute,
+the steps string only when the count changes; in always-on it draws once a minute with 2.1 - 3.9 % of the pixels lit (simulator; full-day worst case 5.0 %, XX-Large).
+Simulator profiler (D-21, D-26): about 28 / 38 / 55 ms of work per always-on minute for Large / X-Large / XX-Large, about 12 - 15 ms per active frame,
+date/time texts rebuilt once a minute, no timers or background; 11.4 - 12.3 kB of 123.8 kB memory used. XX-Large (scalable font) costs about twice Large in always-on. The battery % per day on the watch has not been measured.
 How to measure it yourself:
 1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
 2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load

@@ -18,6 +18,8 @@ module NoirSettings {
     const SIZE_SMALL = 0;
     const SIZE_MEDIUM = 1;
     const SIZE_LARGE = 2;
+    const SIZE_XLARGE = 3;
+    const SIZE_XXLARGE = 4;
 
     const DEFAULT_COLOR = 0xFFFFFF;
 
@@ -26,31 +28,35 @@ module NoirSettings {
     var _hourColor as Number = DEFAULT_COLOR;
     var _minuteColor as Number = DEFAULT_COLOR;
 
-    //! The 8 time colours, same order and values as the list in settings.xml.
+    //! The 16 time colours (24-bit 0xRRGGBB as Dc.setColor takes them), same order and values as the lists in settings.xml.
     function colorValues() as Array<Number> {
-        return [0xFFFFFF, 0x00D4FF, 0x30E060, 0xFFD60A, 0xFF9500, 0xFF453A, 0xFF4FA0, 0xB388FF];
+        return [0xFFFFFF, 0xC8C8C8, 0xFF453A, 0xFF7A5C, 0xFF9500, 0xFFB800, 0xFFD60A, 0xB4F000,
+                0x30E060, 0x00C9A7, 0x00D4FF, 0x6FB8FF, 0x2E6BFF, 0xB388FF, 0xFF2BD6, 0xFF4FA0];
     }
 
     function colorLabels() as Array<ResourceId> {
         return [
-            Rez.Strings.ColorWhite, Rez.Strings.ColorCyan, Rez.Strings.ColorGreen, Rez.Strings.ColorYellow,
-            Rez.Strings.ColorOrange, Rez.Strings.ColorRed, Rez.Strings.ColorPink, Rez.Strings.ColorPurple
+            Rez.Strings.ColorWhite, Rez.Strings.ColorSilver, Rez.Strings.ColorRed, Rez.Strings.ColorCoral,
+            Rez.Strings.ColorOrange, Rez.Strings.ColorGold, Rez.Strings.ColorYellow, Rez.Strings.ColorLime,
+            Rez.Strings.ColorGreen, Rez.Strings.ColorTeal, Rez.Strings.ColorCyan, Rez.Strings.ColorLightBlue,
+            Rez.Strings.ColorBlue, Rez.Strings.ColorPurple, Rez.Strings.ColorMagenta, Rez.Strings.ColorPink
         ];
     }
 
     function sizeValues() as Array<Number> {
-        return [SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE];
+        return [SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_XLARGE, SIZE_XXLARGE];
     }
 
     function sizeLabels() as Array<ResourceId> {
-        return [Rez.Strings.SizeSmall, Rez.Strings.SizeMedium, Rez.Strings.SizeLarge];
+        return [Rez.Strings.SizeSmall, Rez.Strings.SizeMedium, Rez.Strings.SizeLarge, Rez.Strings.SizeXLarge,
+                Rez.Strings.SizeXXLarge];
     }
 
-    //! Parses a stored size: anything that is not a Number in 0..2 becomes Medium.
+    //! Parses a stored size: anything that is not a Number in 0..4 becomes Medium.
     function parseSize(value as Object or Null) as Number {
         if (value instanceof Number) {
             var size = value as Number;
-            if (size >= SIZE_SMALL && size <= SIZE_LARGE) {
+            if (size >= SIZE_SMALL && size <= SIZE_XXLARGE) {
                 return size;
             }
         }

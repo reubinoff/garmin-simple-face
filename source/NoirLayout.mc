@@ -29,17 +29,44 @@ module NoirLayout {
     const OUTLINE_DX = [-1, 0, 1, -1, 1, -1, 0, 1] as Array<Number>;
     const OUTLINE_DY = [-1, -1, -1, 0, 0, 1, 1, 1] as Array<Number>;
 
-    //! Time font candidates per size, largest first; the first one that fits is used in BOTH power modes,
-    //! so the layout never changes between active and always-on mode.
+    //! Vertical half extent of the digits around the TEXT_JUSTIFY_VCENTER line, percent of Dc.getFontHeight().
+    //! Measured from the device font files (simulator.json: number fonts = Bionic_Medium.ttf; scalable face
+    //! RobotoCondensedRegular = RobotoCondensed-Regular.ttf): digit top 27.5 % / 32.3 % above the centre line,
+    //! rounded up. Used only by the fit check (DECISIONS.md D-24).
+    const DIGIT_HALF_PERCENT_NUMBER = 28;
+    const DIGIT_HALF_PERCENT_CONDENSED = 33;
+    // XX-Large: scalable (vector) fonts, Graphics.getVectorFont (API 4.2.1; fenix 9 Pro 47mm lists
+    // "RobotoCondensedRegular" and "BionicMedium" as Scalable fonts in the device reference). Requested pixel sizes
+    // are tried from XXL_SIZE_MAX down in XXL_SIZE_STEP steps; the first that fits is used (D-24).
+    const XXL_SIZE_MAX = 240;
+    const XXL_SIZE_MIN = 180;
+    const XXL_SIZE_STEP = 4;
+
+    //! Scalable faces for XX-Large, preferred first (getVectorFont takes an Array of acceptable faces).
+    function xxlFaces() as Array<String> {
+        return ["RobotoCondensedRegular", "BionicMedium"] as Array<String>;
+    }
+
+    //! System (bitmap) time font candidates per size, largest first; the first one that fits is used in BOTH
+    //! power modes, so the layout never changes between active and always-on mode. XX-Large uses a scalable
+    //! font (NoirTimeView.updateLayout) and falls back to the X-Large list when none fits / none is available.
     function fontCandidates(size as Number) as Array<Graphics.FontType> {
         if (size == NoirSettings.SIZE_SMALL) {
             return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
         }
         if (size == NoirSettings.SIZE_LARGE) {
+            return [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
+        }
+        if (size == NoirSettings.SIZE_XLARGE || size == NoirSettings.SIZE_XXLARGE) {
             return [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM,
                     Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
         }
         return [Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
+    }
+
+    //! Half height of the digit glyphs for a font of the given height (fit check only).
+    function digitHalfHeight(fontHeight as Number, percent as Number) as Number {
+        return (fontHeight * percent + 99) / 100;
     }
 
     function rowSpacing(screenHeight as Number) as Number {
@@ -75,15 +102,16 @@ module NoirLayout {
     }
 
     //! Whole block (date / time / steps) fit check for a round screen of width screenSize.
-    //! digitsWidth = width of "00" in the time font; pad = extra pixels around the time (outline stroke).
-    //! Rows are stacked with spacing, so they cannot overlap; the outer corners of each row must stay inside
-    //! the circle of radius screenSize/2 - EDGE_MARGIN.
-    function blockFits(screenSize as Number, timeHeight as Number, digitsWidth as Number, smallHeight as Number,
-            dateWidth as Number, stepsWidth as Number, pad as Number) as Boolean {
+    //! timeHeight = Dc.getFontHeight of the time font (row stacking), digitHalf = half height of the digit glyphs
+    //! (digitHalfHeight), digitsWidth = width of "00" in the time font; pad = extra pixels around the time (outline).
+    //! Rows are stacked with spacing on the full font height, so they cannot overlap; the outer corners of the digit
+    //! box and of the date / steps rows must stay inside the circle of radius screenSize/2 - EDGE_MARGIN.
+    function blockFits(screenSize as Number, timeHeight as Number, digitHalf as Number, digitsWidth as Number,
+            smallHeight as Number, dateWidth as Number, stepsWidth as Number, pad as Number) as Boolean {
         var radius = screenSize / 2 - EDGE_MARGIN;
         var spacing = rowSpacing(screenSize);
         var timeHalfWidth = (digitsWidth * 2 + colonGap(timeHeight)) / 2 + pad;
-        var timeHalfHeight = timeHeight / 2 + pad;
+        var timeHalfHeight = digitHalf + pad;
         var rowOuterEdge = timeHeight / 2 + spacing + smallHeight;
         return insideCircle(radius, timeHalfWidth, timeHalfHeight)
             && insideCircle(radius, dateWidth / 2, rowOuterEdge)

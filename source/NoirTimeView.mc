@@ -157,7 +157,7 @@ class NoirTimeView extends WatchUi.WatchFace {
     }
 
     //! Picks the time font for the size setting (first candidate that fits, outline included) and caches
-    //! all derived metrics. Same result in active and always-on mode.
+    //! all derived metrics. Same result in active and always-on mode. Runs only when the size setting changes.
     private function updateLayout(dc as Dc, size as Number) as Void {
         if (size == _layoutSize) {
             return;
@@ -167,15 +167,18 @@ class NoirTimeView extends WatchUi.WatchFace {
         _smallHeight = dc.getFontHeight(_smallFont);
         var dateWidth = dc.getTextWidthInPixels(NoirLayout.SAMPLE_DATE, _smallFont);
         var stepsWidth = dc.getTextWidthInPixels(NoirLayout.SAMPLE_STEPS, _smallFont);
-        var candidates = NoirLayout.fontCandidates(size);
-        _timeFont = candidates[candidates.size() - 1];
-        for (var i = 0; i < candidates.size(); i++) {
-            var height = dc.getFontHeight(candidates[i]);
-            var digits = dc.getTextWidthInPixels("00", candidates[i]);
-            if (NoirLayout.blockFits(dc.getWidth(), height, digits, _smallHeight, dateWidth, stepsWidth,
-                    NoirLayout.outlineWidth(height))) {
-                _timeFont = candidates[i];
-                break;
+        var found = false;
+        if (size == NoirSettings.SIZE_XXLARGE) {
+            found = chooseVectorFont(dc, dateWidth, stepsWidth);
+        }
+        if (!found) {
+            var candidates = NoirLayout.fontCandidates(size);
+            _timeFont = candidates[candidates.size() - 1];
+            for (var i = 0; i < candidates.size(); i++) {
+                if (fits(dc, candidates[i], NoirLayout.DIGIT_HALF_PERCENT_NUMBER, dateWidth, stepsWidth)) {
+                    _timeFont = candidates[i];
+                    break;
+                }
             }
         }
         _timeHeight = dc.getFontHeight(_timeFont);
@@ -184,6 +187,33 @@ class NoirTimeView extends WatchUi.WatchFace {
         _colonRadius = NoirLayout.colonRadius(_timeHeight);
         _colonOffset = NoirLayout.colonDotOffset(_timeHeight);
         _outline = NoirLayout.outlineWidth(_timeHeight);
+    }
+
+    //! XX-Large (D-24): the largest scalable font (Graphics.getVectorFont, API 4.2.1) that fits, tried from
+    //! XXL_SIZE_MAX down. Returns false (caller falls back to the X-Large system fonts) if the API or the faces are
+    //! not available or nothing fits. Called once per size change only; the chosen VectorFont is kept in _timeFont.
+    private function chooseVectorFont(dc as Dc, dateWidth as Number, stepsWidth as Number) as Boolean {
+        if (!(Graphics has :getVectorFont)) {
+            return false;
+        }
+        for (var px = NoirLayout.XXL_SIZE_MAX; px >= NoirLayout.XXL_SIZE_MIN; px -= NoirLayout.XXL_SIZE_STEP) {
+            var font = Graphics.getVectorFont({ :face => NoirLayout.xxlFaces(), :size => px });
+            if (font == null) {
+                return false;
+            }
+            if (fits(dc, font, NoirLayout.DIGIT_HALF_PERCENT_CONDENSED, dateWidth, stepsWidth)) {
+                _timeFont = font;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function fits(dc as Dc, font as Graphics.FontType, digitPercent as Number, dateWidth as Number,
+            stepsWidth as Number) as Boolean {
+        var height = dc.getFontHeight(font);
+        return NoirLayout.blockFits(dc.getWidth(), height, NoirLayout.digitHalfHeight(height, digitPercent),
+            dc.getTextWidthInPixels("00", font), _smallHeight, dateWidth, stepsWidth, NoirLayout.outlineWidth(height));
     }
 
     //! Date, hour and minute texts and the 12/24 h flag: rebuilt once per minute. Steps text: rebuilt only when the count changes.

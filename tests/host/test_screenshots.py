@@ -36,7 +36,7 @@ def time_block_height(img):
 
 class RealScreenshotTests(unittest.TestCase):
     def test_present(self):
-        for size in ("small", "medium", "large"):
+        for size in ("small", "medium", "large", "xlarge", "xxlarge"):
             self.assertTrue(glob.glob(os.path.join(SHOTS, "active_%s_*.png" % size)), size)
             self.assertTrue(glob.glob(os.path.join(SHOTS, "aod_%s_*.png" % size)), size)
 

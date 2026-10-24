@@ -1,5 +1,5 @@
 <properties xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://developer.garmin.com/downloads/connect-iq/resources.xsd">
-    <!-- 0 = Small, 1 = Medium, 2 = Large. Must match settings.xml and source/NoirSettings.mc. -->
+    <!-- 0 = Small, 1 = Medium, 2 = Large, 3 = X-Large, 4 = XX-Large. Must match settings.xml and source/NoirSettings.mc. -->
     <property id="TimeSize" type="number">1</property>
     <!-- Colours as 0xRRGGBB. Must be one of the list entries in settings.xml / NoirSettings.colorValues(). -->
     <property id="HourColor" type="number">0xFFFFFF</property>

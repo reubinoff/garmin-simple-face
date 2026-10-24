@@ -47,13 +47,22 @@ class ResourcesTest(unittest.TestCase):
             entries = self.setting(key)
             self.assertEqual([v for v, _ in entries], code, key)
             self.assertEqual([t.replace("@Strings.", "") for _, t in entries], labels, key)
-        self.assertEqual(len(code), 8)
-        self.assertEqual(len(set(code)), 8)
+        self.assertEqual(len(code), 16)
+        self.assertEqual(len(set(code)), 16)
+        # 24-bit 0xRRGGBB (Dc.setColor), never black (invisible on the black face), and still 16 distinct colours
+        # after reduction to the 16-bit (RGB565, 65,536 colours) display of the fenix 9 Pro 47mm.
+        for c in code:
+            self.assertTrue(0 < c <= 0xFFFFFF, hex(c))
+        rgb565 = {((c >> 19) & 0x1F, (c >> 10) & 0x3F, (c >> 3) & 0x1F) for c in code}
+        self.assertEqual(len(rgb565), 16)
 
     def test_sizes_match_code(self):
         entries = self.setting("TimeSize")
         consts = dict((k, int(v)) for k, v in re.findall(r"const (SIZE_\w+) = (\d+);", self.mc))
-        self.assertEqual([v for v, _ in entries], [consts["SIZE_SMALL"], consts["SIZE_MEDIUM"], consts["SIZE_LARGE"]])
+        self.assertEqual([v for v, _ in entries], [consts["SIZE_SMALL"], consts["SIZE_MEDIUM"], consts["SIZE_LARGE"],
+                                                   consts["SIZE_XLARGE"], consts["SIZE_XXLARGE"]])
+        labels = re.findall(r"Rez\.Strings\.(Size\w+)", re.search(r"function sizeLabels\(\).*?\];", self.mc, re.S).group(0))
+        self.assertEqual([t.replace("@Strings.", "") for _, t in entries], labels)
 
     def test_defaults_are_list_values(self):
         for key, default in self.props.items():

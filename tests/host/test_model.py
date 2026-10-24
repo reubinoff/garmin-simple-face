@@ -14,6 +14,7 @@ PORT = {
     "formatSteps": lambda v: m.format_steps(v), "formatHour": m.format_hour, "outlineWidth": m.outline_width,
     "colonRadius": m.colon_radius, "colonGap": m.colon_gap, "colonDotOffset": m.colon_dot_offset,
     "colonColor": m.colon_color, "insideCircle": m.inside_circle, "blockFits": m.block_fits,
+    "digitHalfHeight": m.digit_half_height,
     "maskFirstRow": m.mask_first_row,
 }
 
@@ -67,16 +68,30 @@ class PortParityTest(unittest.TestCase):
 
     def test_layout_fits_for_every_size_and_mapping(self):
         for mapping in ("line", "digit"):
-            for size in (0, 1, 2):
+            for size in m.SIZES:
                 tf, sf = m.choose_time_font(size, mapping)
-                self.assertTrue(m.block_fits(m.SCREEN, tf.height, tf.width("00"), sf.height,
-                                             sf.width(m.L["SAMPLE_DATE"]), sf.width(m.L["SAMPLE_STEPS"]),
-                                             m.outline_width(tf.height)), (mapping, size, tf.name))
+                pct = m.L["DIGIT_HALF_PERCENT_CONDENSED" if tf.condensed else "DIGIT_HALF_PERCENT_NUMBER"]
+                self.assertTrue(m.fits(tf, sf, pct), (mapping, size, tf.name))
 
     def test_sizes_are_monotonic(self):
-        for mapping in ("line", "digit"):
-            h = [m.choose_time_font(s, mapping)[0].height for s in (0, 1, 2)]
-            self.assertTrue(h[0] <= h[1] <= h[2], (mapping, h))
+        # "line" only: the device uses it (D-23); with the ruled-out pessimistic "digit" mapping the big fonts
+        # would not fit and fall back (that mapping is still used as a worst case by the burn-in tests).
+        for mapping in ("line",):
+            fonts = [m.choose_time_font(s, mapping)[0] for s in m.SIZES]
+            # Each size is a different font, so every option is really bigger than the previous one.
+            self.assertEqual(len({f.name for f in fonts}), len(fonts), (mapping, [f.name for f in fonts]))
+
+    def test_digit_height_grows_with_every_size(self):
+        """The visible digit height (ink of "00"), not only the font box, must grow from size to size."""
+        from PIL import Image, ImageDraw
+        heights = []
+        for s in m.SIZES:
+            tf = m.choose_time_font(s, "line")[0]
+            im = Image.new("L", (600, 400))
+            tf.draw(ImageDraw.Draw(im), 10, 200, "00", "left", 255)
+            box = im.getbbox()
+            heights.append(box[3] - box[1])
+        self.assertEqual(heights, sorted(set(heights)), heights)
 
 
 if __name__ == "__main__":

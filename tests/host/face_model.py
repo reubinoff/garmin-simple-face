@@ -29,8 +29,10 @@ DEVICE_FONTS = os.environ.get("CIQ_DEVICE_FONTS")
 if DEVICE_FONTS and os.path.exists(os.path.join(os.path.expanduser(DEVICE_FONTS), "Bionic_Medium.ttf")):
     RAJDHANI = os.path.join(os.path.expanduser(DEVICE_FONTS), "Bionic_Medium.ttf")
     ROBOTO = os.path.join(os.path.expanduser(DEVICE_FONTS), "Roboto-Regular.ttf")
-    FONT_SOURCE = "device fonts (Bionic_Medium / Roboto-Regular from the SDK manager)"
+    CONDENSED = os.path.join(os.path.expanduser(DEVICE_FONTS), "RobotoCondensed-Regular.ttf")
+    FONT_SOURCE = "device fonts (Bionic_Medium / Roboto-Regular / RobotoCondensed-Regular from the SDK manager)"
 else:
+    CONDENSED = ROBOTO  # stand-in: Roboto variable font at width 75 (condensed)
     DEVICE_FONTS = None
     FONT_SOURCE = "stand-in fonts (Rajdhani Medium / Roboto, Google Fonts)"
 
@@ -62,21 +64,26 @@ def _mc_constants(path):
 L = _mc_constants(os.path.join(ROOT, "source", "NoirLayout.mc"))
 S = _mc_constants(os.path.join(ROOT, "source", "NoirSettings.mc"))
 
+_XL = ["FONT_NUMBER_THAI_HOT", "FONT_NUMBER_HOT", "FONT_NUMBER_MEDIUM", "FONT_NUMBER_MILD"]
 FONT_CANDIDATES = {
     S["SIZE_SMALL"]: ["FONT_NUMBER_MILD", "FONT_LARGE"],
     S["SIZE_MEDIUM"]: ["FONT_NUMBER_MEDIUM", "FONT_NUMBER_MILD"],
-    S["SIZE_LARGE"]: ["FONT_NUMBER_THAI_HOT", "FONT_NUMBER_HOT", "FONT_NUMBER_MEDIUM", "FONT_NUMBER_MILD"],
+    S["SIZE_LARGE"]: ["FONT_NUMBER_HOT", "FONT_NUMBER_MEDIUM", "FONT_NUMBER_MILD"],
+    S["SIZE_XLARGE"]: _XL,
+    S["SIZE_XXLARGE"]: _XL,   # fallback only; XX-Large uses the scalable condensed face
 }
+SIZES = sorted(FONT_CANDIDATES)
 
 
 def color_values():
-    """NoirSettings.colorValues() read from the Monkey C source (8 palette colours, Number 0xRRGGBB)."""
+    """NoirSettings.colorValues() read from the Monkey C source (16 palette colours, Number 0xRRGGBB)."""
     with open(os.path.join(ROOT, "source", "NoirSettings.mc"), encoding="utf-8") as fh:
         body = re.search(r"function colorValues\(\).*?\[(.*?)\]", fh.read(), re.S).group(1)
     return [int(v, 16) for v in body.split(",")]
 
 
-SIZE_NAMES = {S["SIZE_SMALL"]: "small", S["SIZE_MEDIUM"]: "medium", S["SIZE_LARGE"]: "large"}
+SIZE_NAMES = {S["SIZE_SMALL"]: "small", S["SIZE_MEDIUM"]: "medium", S["SIZE_LARGE"]: "large",
+              S["SIZE_XLARGE"]: "xlarge", S["SIZE_XXLARGE"]: "xxlarge"}
 
 
 def mc_div(a, b):
@@ -110,11 +117,15 @@ def inside_circle(radius, half_w, dy):
     return half_w * half_w + dy * dy <= radius * radius
 
 
-def block_fits(screen, th, digits_w, sh, date_w, steps_w, pad):
+def digit_half_height(fh, percent):
+    return mc_div(fh * percent + 99, 100)
+
+
+def block_fits(screen, th, digit_half, digits_w, sh, date_w, steps_w, pad):
     radius = mc_div(screen, 2) - L["EDGE_MARGIN"]
     sp = row_spacing(screen)
     half_w = mc_div(digits_w * 2 + colon_gap(th), 2) + pad
-    half_h = mc_div(th, 2) + pad
+    half_h = digit_half + pad
     outer = mc_div(th, 2) + sp + sh
     return (inside_circle(radius, half_w, half_h) and inside_circle(radius, mc_div(date_w, 2), outer)
             and inside_circle(radius, mc_div(steps_w, 2), outer))
@@ -154,9 +165,14 @@ def format_steps(steps):
 # ---- stand-in fonts ------------------------------------------------------------------------
 class Font:
     def __init__(self, name, mapping):
-        family, height = FONTS[name]
+        if name.startswith("VECTOR_"):   # Graphics.getVectorFont({:face => RobotoCondensedRegular, :size => px})
+            family, height = "condensed", int(name.split("_")[1])
+            mapping = "line"  # measured in the simulator: getFontHeight == requested px, "00" width as in the TTF
+        else:
+            family, height = FONTS[name]
         self.name, self.height, self.family, self.mapping = name, height, family, mapping
-        path = RAJDHANI if family == "rajdhani" else ROBOTO
+        path = {"rajdhani": RAJDHANI, "roboto": ROBOTO, "condensed": CONDENSED}[family]
+        self.condensed = family == "condensed"
         probe = self._load(path, 1000)
         if mapping == "digit" and family == "rajdhani":
             box = probe.getbbox("0", anchor="ls")
@@ -166,11 +182,13 @@ class Font:
             em = 1000 * height / (asc + desc)
         self.font = self._load(path, max(1, round(em)))
 
-    @staticmethod
-    def _load(path, size):
+    def _load(self, path, size):
         f = ImageFont.truetype(path, size)
         if path == ROBOTO and not DEVICE_FONTS:
-            f.set_variation_by_name("Regular")
+            if self.condensed:
+                f.set_variation_by_axes([75, 400])
+            else:
+                f.set_variation_by_name("Regular")
         return f
 
     def width(self, text):
@@ -186,14 +204,23 @@ class Font:
             d.text((left, y), text, font=self.font, fill=fill, anchor="lm")
 
 
+def fits(f, small, percent):
+    return block_fits(SCREEN, f.height, digit_half_height(f.height, percent), f.width("00"), small.height,
+                      small.width(L["SAMPLE_DATE"]), small.width(L["SAMPLE_STEPS"]), outline_width(f.height))
+
+
 def choose_time_font(size, mapping):
-    """Port of NoirTimeView.updateLayout(): first candidate that fits, outline pad included."""
+    """Port of NoirTimeView.updateLayout() / chooseVectorFont(): first candidate that fits, outline pad included."""
     small = Font("FONT_SMALL", mapping)
-    date_w, steps_w = small.width(L["SAMPLE_DATE"]), small.width(L["SAMPLE_STEPS"])
+    if size == S["SIZE_XXLARGE"]:
+        for px in range(L["XXL_SIZE_MAX"], L["XXL_SIZE_MIN"] - 1, -L["XXL_SIZE_STEP"]):
+            f = Font("VECTOR_%d" % px, mapping)
+            if fits(f, small, L["DIGIT_HALF_PERCENT_CONDENSED"]):
+                return f, small
     cands = FONT_CANDIDATES[size]
     for name in cands:
         f = Font(name, mapping)
-        if block_fits(SCREEN, f.height, f.width("00"), small.height, date_w, steps_w, outline_width(f.height)):
+        if fits(f, small, L["DIGIT_HALF_PERCENT_NUMBER"]):
             return f, small
     return Font(cands[-1], mapping), small
 

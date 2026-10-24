@@ -29,7 +29,7 @@ class BurnInTest(unittest.TestCase):
     def test_limits_every_size_both_mappings(self):
         # 40 minutes across an hour change (all minute digits + hour digit change), brightest colours.
         for mapping in ("line", "digit"):
-            for size in (0, 1, 2):
+            for size in m.SIZES:
                 lit, lum, run = m.burn_in_run(size, WHITE, WHITE, 9 * 60 + 40, 40, mapping=mapping)
                 with self.subTest(mapping=mapping, size=size):
                     self.assertLess(lit, 0.10)
@@ -37,7 +37,7 @@ class BurnInTest(unittest.TestCase):
                     self.assertLessEqual(run, 3)
 
     def test_same_size_as_active_mode(self):
-        for size in (0, 1, 2):
+        for size in m.SIZES:
             fonts = m.choose_time_font(size, "line")
             tf = fonts[0]
             active = time_row(m.render(size, WHITE, CYAN, False, minute=8, fonts=fonts), tf)
@@ -52,7 +52,7 @@ class BurnInTest(unittest.TestCase):
                 self.assertAlmostEqual((b[3] - b[2]) - (a[3] - a[2]), 2 * ow, delta=3)
 
     def test_digits_are_hollow(self):
-        for size in (0, 1, 2):
+        for size in m.SIZES:
             fonts = m.choose_time_font(size, "line")
             tf = fonts[0]
             active = time_row(m.render(size, WHITE, WHITE, False, minute=8, fonts=fonts), tf)
@@ -60,7 +60,9 @@ class BurnInTest(unittest.TestCase):
             aod_row = time_row(aod, tf)
             overlap = (active & aod_row).sum() / active.sum()
             with self.subTest(size=size):
-                self.assertLess(overlap, 0.25)   # interior of the glyphs is black (only anti-aliased edges overlap)
+                # interior of the glyphs is black (only anti-aliased edges overlap); the thinner strokes of the
+                # condensed XX-Large face have relatively more edge, hence the higher bound there
+                self.assertLess(overlap, 0.30 if tf.condensed else 0.25)
                 full = active & (m.render(size, WHITE, WHITE, False, minute=8, fonts=fonts).max(axis=2) >= 250)
                 core = full.copy()                 # fully covered glyph pixels at least 1 px inside the glyph
                 for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
