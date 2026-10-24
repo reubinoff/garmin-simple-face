@@ -110,8 +110,9 @@ Status: VERIFIED-DOC (`api-docs/Toybox/System.html`, `.../ActivityMonitor/Info.h
   `source/NoirSettings.mc` is the single code-side definition (keys, values, labels); it falls back to the default if a stored value is not a `Number`.
 * The value lists exist twice (settings.xml for the phone, `NoirSettings.mc` for the watch menu) because a settings list is not readable from code per the docs read;
   a check script compared both lists on the box (identical).
-* `AppBase.onSettingsChanged()` calls `WatchUi.requestUpdate()` (same as the AppBase doc example). The view also reads the properties on every `onUpdate()`, so a
-  change made in the on-device menu is shown even without that callback (whether the system calls `onSettingsChanged()` after an on-device change is not documented).
+* Settings are **cached** in `NoirSettings` (read once, D-21). The cache is refreshed by `AppBase.onSettingsChanged()` (phone change; then `WatchUi.requestUpdate()`,
+  as in the AppBase doc example), by the on-device menu right after its own `Properties.setValue`, and in `NoirTimeView.onShow()`. So a menu change is shown even if the
+  system does not call `onSettingsChanged()` after an on-device change (not documented, G-12).
 * The 8 colours are my design choice (bright, saturated, readable on black). The display has 65 536 colours (D-01) so colours are quantised
   to RGB565 by the hardware; not viewed on a real screen.
 * Simulator testing: "File > Edit Persistent Storage > Edit Application.Properties data" (documented in the same page, section "Testing App Settings").
@@ -128,24 +129,20 @@ Rules (primary sources):
 * `WatchFace` doc: in low power `onUpdate()` is called once a minute; `onEnterSleep()/onExitSleep()` mark transitions.
 * The docs do not say which of the two rules (pixel-count or luminance) the fēnix 9 Pro applies, so the design satisfies **both**.
 
-What the code does in low power (`DISPLAY_MODE_LOW_POWER`):
-* time at 60 % brightness, at most `FONT_NUMBER_MILD` (113 px) whatever the size setting (Small uses `FONT_LARGE`, 71 px; see D-17); date and steps in `FONT_XTINY` (37 px) dark grey -> far less lit area than high-power mode;
-* whole block shifted +/-8 px on a 4-minute cycle (`min % 4`), so consecutive minutes differ by 16 px; stroke widths are below that, so a pixel is not
-  lit in two consecutive minutes;
-* nothing static is drawn (no ticks, no labels); background pure black;
-* `onPartialUpdate` is **not** implemented: the FAQ says AMOLED watch faces must not use per-second partial updates.
-* An estimate with a stand-in font (`docs/mockups/mockup_always_on.png`, DejaVu Bold, heavier than Rajdhani) lit ~5.7 % of the pixels (Medium/Large) and ~2.8 % (Small) - `docs/mockups/mockup_always_on_sizes.png`. That is an estimate with a different font, **not a measurement**.
-Status: rules VERIFIED-DOC; compliance **UNVERIFIED** until checked with the simulator heat map or on the watch (gap G-2).
+What the code does in low power: **superseded by D-19** (same size as active mode, outline-only digits, shift + rotating row mask).
+The earlier design (time capped at `NUMBER_MILD` at 60 % brightness, `FONT_XTINY` date/steps) was replaced on the owner's request.
+* `onPartialUpdate` is **not** implemented: the FAQ says per-second partial updates are "no longer allowed" on AMOLED (<https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>).
+Status: rules VERIFIED-DOC; compliance: model estimate in D-19, **measurement on the simulator/watch still open (G-2)**.
 
 ## D-10 Rendering approach
 
 * All coordinates are derived from `dc.getWidth()/getHeight()` and font heights; nothing is hard-coded to 454.
-* Time font: chosen from the size setting with a fit check against the round screen (D-17); cached and recomputed only when the size setting or the power
-  mode changes, so the size does not change between minutes.
+* Time font: chosen from the size setting with a fit check against the round screen (D-17, D-20); cached and recomputed only when the size setting
+  changes, and **identical in active and always-on mode** (D-19).
 * The colon is drawn with two `fillCircle` calls: the docs do not state that the number-only fonts contain ":" (gap G-4), so it is not relied on.
-* `dc.setAntiAlias(true)` for the circles (guarded with `has`, per the Dc doc).
+* `dc.setAntiAlias(true)` for the circles (guarded with `has`, per the Dc doc); switched off for the AOD row mask (D-19).
 * Colon is fixed at the screen centre; hours are right-aligned to it, minutes left-aligned, so the colon never jumps.
-* Steps are shown as a number only (thousands separator) - design choice, easy to change in `stepsText()`.
+* Steps are shown as a number only (thousands separator) - design choice, in `NoirLayout.formatSteps()` (`--` when `steps` is null).
 * The vertical position of the colon dots (`fontHeight * 14 %`) assumes the digits are vertically centred in the font box. This is **UNVERIFIED** (gap G-3); check in the simulator.
 Status: API usage VERIFIED-DOC; visual result **UNVERIFIED**.
 
@@ -164,7 +161,7 @@ render correctly in Hebrew (RTL ordering of `"$1$ $2$ $3$"`) is **UNVERIFIED** (
 | Simulator | `connectiq` then `monkeydo build/x.prg fenix9pro47mm` | command-line setup page |
 | Sideload | copy the `.prg` to the watch's `GARMIN/APPS` directory | `connect-iq-basics/your-first-app/` |
 | Java | 11 or higher (docs); box run used Temurin 21 and `monkeyc` 9.3.0 started fine | command-line setup page; VERIFIED-ON-BOX |
-| Linux | docs footnote: "Connect IQ only supports Ubuntu Linux distributions" -> CI uses `ubuntu-24.04` | getting-started page |
+| Linux | docs footnote: "Connect IQ only supports Ubuntu Linux distributions" -> CI uses Ubuntu (`ubuntu-24.04` for checks, `ubuntu-22.04` for the SDK job, D-22) | getting-started page |
 
 Open point: the docs do not say whether the VS Code "Export Project" adds `-r`. The IQ build here omits `-r` (the documented form); compare file size / behaviour if the store rejects it (gap G-6).
 Keep the developer key: "You will need to use the same key to sign updates to an existing app on the store. If you lose your original signing key you will not be able to update your app." (getting-started page).
@@ -177,8 +174,8 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 
 ## D-14 CI (GitHub Actions)
 
-* Job `static-checks` (no secrets): XML well-formedness, `bash -n` on scripts, no key files tracked.
-* Job `build`: Java 21, Go (to `go install` the pinned CLI), `scripts/install-sdk.sh`, key from secret `CIQ_DEVELOPER_KEY_B64`, `scripts/build.sh`, upload `NoirTime.prg` and `NoirTime.iq` as an artifact.
+* Job `static-checks` (no secrets): XML well-formedness, `bash -n` on scripts, host tests (D-22), no key files tracked.
+* Job `build` (skipped with a warning when secrets are missing): Java 21, Go (to `go install` the pinned CLI), `scripts/install-sdk.sh`, key from secret `CIQ_DEVELOPER_KEY_B64`, `scripts/build.sh`, Connect IQ unit tests under `xvfb`, upload `NoirTime.prg` and `NoirTime.iq` as an artifact.
 * Garmin does not document a CI procedure; Garmin login in CI is therefore a **community pattern** (D-03). Risk: Garmin SSO may require MFA or block datacenter IPs (gap G-8).
 * Action majors (`checkout@v7`, `setup-java@v6`, `setup-go@v7`, `upload-artifact@v7`) are the existing latest majors as of 2026-10-23 (checked via the GitHub API/tags).
 * The workflow never prints the key or password; the key is written to `$RUNNER_TEMP` and is not uploaded.
@@ -190,7 +187,7 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 * Owner request: hours and minutes colourable separately. `drawTime()` already drew hours and minutes as two `drawText` calls (hours right-aligned to the colon,
   minutes left-aligned), so each simply gets its own `dc.setColor` (`Dc.setColor`, API 1.0.0, <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>).
 * **Colon colour (design choice):** if hour colour == minute colour, the colon uses that colour (the default all-white face looks exactly as before);
-  if they differ, the colon is the neutral grey of the date/steps text (`0xB0B0B0`), so it does not "belong" to either half. In always-on mode it is dimmed like the rest.
+  if they differ, the colon is the neutral grey of the date/steps text (`0xB0B0B0`), so it does not "belong" to either half. In always-on mode it is drawn as an outline ring (D-19).
 * Same 8-colour palette for both. Status: API VERIFIED-DOC; look **UNVERIFIED** (mockups only).
 
 ## D-16 On-device settings: `AppBase.getSettingsView()` + `Menu2` (implemented); native watch face editor (evaluated, not implemented)
@@ -231,18 +228,18 @@ Status: VERIFIED-DOC; menu location on the watch and behaviour **UNVERIFIED** (G
 Font heights on the fēnix® 9 Pro 47mm (device reference page): `FONT_LARGE` 71, `NUMBER_MILD` 113, `NUMBER_MEDIUM` 153, `NUMBER_HOT` 173, `NUMBER_THAI_HOT` 210 px;
 `FONT_SMALL` 53 and `FONT_XTINY` 37 px for date/steps.
 
-| Setting | High power (first that fits) | Always-on (first that fits) |
-|---|---|---|
-| Small | `NUMBER_MILD`, `LARGE` | `LARGE` |
-| Medium (default) | `NUMBER_MEDIUM`, `NUMBER_MILD` | `NUMBER_MILD`, `LARGE` |
-| Large | `NUMBER_THAI_HOT`, `NUMBER_HOT`, `NUMBER_MEDIUM`, `NUMBER_MILD` | `NUMBER_MILD`, `LARGE` |
+| Setting | Candidates, first that fits (same in active and always-on mode, D-19) |
+|---|---|
+| Small | `NUMBER_MILD`, `LARGE` |
+| Medium (default) | `NUMBER_MEDIUM`, `NUMBER_MILD` |
+| Large | `NUMBER_THAI_HOT`, `NUMBER_HOT`, `NUMBER_MEDIUM`, `NUMBER_MILD` |
 
-* **Fit check** (`fits()` in `NoirTimeView.mc`): rows are stacked date / time / steps with 3 % spacing, so they never overlap by construction. A font is accepted only if
+* **Fit check** (`NoirLayout.blockFits()`, D-20): rows are stacked date / time / steps with 3 % spacing, so they never overlap by construction. A font is accepted only if
   the corners of the time box (`2 x width("00") + colon gap` wide, font height tall) and of the date and steps boxes are inside the circle of radius `width/2 - 12 px`.
   Widths are measured with `Dc.getTextWidthInPixels` and heights with `Dc.getFontHeight` (API 1.0.0) on the real device fonts at run time; integer maths only.
   The date box uses the sample "Wed 30 Sep" and the steps box "100,000"; a longer localised date could still be wider (G-13).
 * So "Large" means "the largest that fits"; on this screen it may end up the same as Medium - the docs give heights but no glyph widths, so which one wins is not knowable before running (G-13).
-* **Always-on** is capped at `NUMBER_MILD` for all sizes to keep the lit area within the burn-in limits (D-09); Small uses the 71 px `FONT_LARGE` so the setting still has a visible effect. The 12 px edge margin also covers the 8 px AOD shift.
+* **Always-on** uses the same font as active mode (owner request, D-19); the 12 px edge margin covers the 8 px AOD shift plus the 3 px maximum outline (tested).
 Status: API VERIFIED-DOC; actual sizes **UNVERIFIED**.
 
 ## D-18 Migration from `TimeColor`
@@ -252,12 +249,92 @@ Status: API VERIFIED-DOC; actual sizes **UNVERIFIED**.
   what happens to stored values of a removed property after an app update, so if this matters later, keep the old key and copy it once (`Properties.getValue`/`setValue`).
 Status: design decision; based on the project state, not on runtime behaviour.
 
+## D-19 Always-on: same size as active mode, outline-only digits, shift + rotating row mask
+
+Owner request: "in always-on everything stays the same size, only the digits are not filled but outlines only".
+
+Limits that apply (primary sources):
+* AMOLED FAQ <https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>: "a pixel is considered on when rendering any color other than black"; "if more than 10% of the screen pixels are on or any pixel is on for
+  longer than 3 minutes, the system will shut off the screen"; "Since the Venu 2, the rule for always-on is to use less than 10% of the screen's luminance";
+  recommends a thin font and shifting the time every minute; test with *File -> View Screen Heat Map* (24 h simulation).
+* UX guidelines, Watch Faces (<https://developer.garmin.com/connect-iq/user-experience-guidelines/watch-faces/>): always-on "will only update every minute, and each update
+  is limited to using 10% of the available pixels".
+* `DeviceSettings.requiresBurnInProtection` (<https://developer.garmin.com/connect-iq/api-docs/Toybox/System/DeviceSettings.html>).
+
+How the outline is drawn (only documented API 1.0.0 calls, <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>):
+* No outline/hollow system font is documented, and `Dc.setStroke` (4.0.0) is for primitives, so the outline is made with text: `setColor(colour, COLOR_TRANSPARENT)`,
+  `drawText` at the 8 neighbour offsets x `w` px, then `drawText` once in **black** at the real position. This leaves a ring `w` px wide around each glyph and the glyph
+  interior black. `w = clamp(fontHeight / 64, 2, 3)` (`NoirLayout.outlineWidth`). Colour = the user's hour/minute colour at full value (thin lines are already dim).
+* Colon: `drawCircle` with `setPenWidth(w)` (API 1.0.0) instead of `fillCircle`.
+* Date and steps: same `FONT_SMALL` size as active mode, filled, dimmer grey `0x6E6E6E` (active `0xB0B0B0`).
+* Layout and font are **identical** to active mode (same `updateLayout()` result); the fit check includes the outline width (D-20).
+
+Burn-in protection:
+* Whole block shifted +/-8 px each minute on a 4-phase cycle (`NoirLayout.aodShift`, FAQ recommendation).
+* **Row mask:** after drawing, every 3rd screen row (`y % 3 == minute % 3`, `NoirLayout.maskFirstRow`) is set black with 1 px `fillRectangle` over the whole width,
+  anti-aliasing off. Every pixel is therefore black at least once in any 3 consecutive minutes **whatever the real glyph shapes are**. Reason: with the shift alone
+  the host model found pixels on for 10 consecutive minutes (overlapping strokes of different digits / the date row). Cost: about 152 `fillRectangle` per minute.
+* Model results (`docs/burn-in-report.md`, full 24 h, white/white = worst case; stand-in fonts, so **estimates**): max pixels on 2.7 % (Small) / 3.2 % (Medium) /
+  3.4 % (Large) with the "line" font-size mapping, 4.0 % with the pessimistic "digit" mapping; max luminance 1.8 - 3.0 %; longest run 2 minutes. Limits: 10 %, 10 %, 3 min.
+Status: rules VERIFIED-DOC; drawing API VERIFIED-DOC; numbers = host-model ESTIMATE; simulator Heat Map / watch measurement **UNVERIFIED** (G-2).
+
+## D-20 Fit check includes the outline
+
+`NoirLayout.blockFits(screen, timeHeight, digitsWidth, smallHeight, dateWidth, stepsWidth, pad)`: the time box is enlarged by `pad` = outline width on each side and
+the corners must be inside the circle of radius `screen/2 - 12`. Same check for both modes, so always-on never needs a smaller font. Status: unit-tested (D-22).
+
+## D-21 Battery
+
+Documented facts:
+* Watch faces "run continuously ... A poorly designed watch face - one that takes too long to draw - can greatly degrade the battery life"; they "cannot access the compass,
+  GPS, or other sensors" (<https://developer.garmin.com/connect-iq/connect-iq-basics/app-types/>).
+* Update rate: sleep mode = updates "once each minute", no timers or animations; after a wrist raise `onUpdate` every second for "typically about ten seconds", then
+  `onEnterSleep()` (same page and <https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFace.html>).
+* AMOLED: "every pixel draws power ... you want to have as much black on screen as possible" (AMOLED FAQ <https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>).
+* "Watchdog Tripped: A Monkey C function has executed for too long" (<https://developer.garmin.com/connect-iq/monkey-c/exceptions-and-errors/>).
+* Measuring: simulator *File -> View Profiler*; on the watch build with `-k`, the run writes `GARMIN\APPS\LOGS\<app>.PRF`, which the profiler can load
+  (<https://developer.garmin.com/connect-iq/core-topics/profiling/>).
+
+Review of this face:
+
+| Item | Finding / change |
+|---|---|
+| Update frequency | Only the system-driven `onUpdate`; **no** `onPartialUpdate`, **no** `Timer`, no animation -> no per-second work in sleep. |
+| Background / sensors / permissions | None (`<iq:permissions/>` empty, no background service, no sensor/GPS, no web requests). |
+| Fonts / resources | System fonts only (`Graphics.FONT_*`); no `loadResource`, no custom font, no bitmap in the face. |
+| Settings | **Changed:** were read with `Properties.getValue` 3x per `onUpdate`; now cached in `NoirSettings`, re-read only on `onSettingsChanged`, after a menu change and in `onShow`. |
+| Layout | Font choice + metrics (`getFontHeight`, `getTextWidthInPixels`) computed once per size setting and cached. |
+| Texts | **Changed:** date (`Gregorian.info`, `Lang.format`), hour/minute strings and the 12/24 h flag rebuilt once per minute; steps string only when the count changes. Per frame only `getClockTime`, `ActivityMonitor.getInfo()` (documented API; its cost is not documented) and the draw calls. |
+| Active mode | ~6 draw calls per frame, about 10 frames after each wrist raise. |
+| Always-on | 18 `drawText` (outline) + 2 `drawCircle` + 2 `drawText` + ~152 one-pixel `fillRectangle`, **once a minute**; 2.7 - 4 % of pixels lit (model), the rest black. |
+
+Expected impact: small (minute-rate, short draw), but **not measured**: no profiler or watch run was possible (G-1, G-15). How to measure: README "Battery".
+Status: rules VERIFIED-DOC; code review VERIFIED-ON-BOX (device-less strict build); runtime cost **UNVERIFIED** (G-15).
+
+## D-22 Tests and compile verification
+
+* **Connect IQ unit tests** (`source/tests/NoirTests.mc`: `(:test)` functions taking a `Logger`, `Toybox.Test` asserts; Unit Testing guide
+  <https://developer.garmin.com/connect-iq/core-topics/unit-testing/>): settings parsing (invalid/null -> defaults), palette/labels, index/cycle maths, a real
+  `Properties.setValue` round trip, font candidates, fit maths, colon geometry/colour, outline width, AOD shift (incl. margin >= shift + outline), row mask, step and hour
+  formatting incl. `null`. Build `monkeyc ... -t`, run `connectiq` + `monkeydo <prg> fenix9pro47mm -t` (`scripts/run-unit-tests.sh`). Tests are left out of normal builds
+  (checked: no test names in the normal PRG).
+* **Host tests** (`tests/host`, Python `unittest` + numpy/Pillow/lxml): resources vs. code (property keys, palette, sizes, defaults, en/heb string-id parity,
+  used/defined ids, manifest), `resources.xsd` validation (when `CIQ_RESOURCES_XSD` is set), a Python port of `NoirLayout` that **re-runs the simple assertions from
+  `NoirTests.mc`**, and the AOD harness (same size as active, hollow digits, < 10 % pixels, < 10 % luminance, no pixel on > 3 min).
+* **CI:** host tests in `static-checks` (always); SDK build + unit tests (under `xvfb`) in `build`, only when the Garmin secrets exist, on `ubuntu-22.04` because the SDK
+  simulator links `libwebkit2gtk-4.0` (`ldd sdk/bin/simulator`), which newer Ubuntu/Debian no longer ship.
+* **Compile without device files:** `monkeyc -f monkey.jungle -o X.prg -y KEY -l 3 -w` (no `-d`) warns "Invalid device id found in the application manifest:
+  'fenix9pro47mm'" and prints `BUILD SUCCESSFUL`. It runs the parser, symbol resolution and the strict type checker against the SDK API (checked by injecting an
+  undefined symbol and a type error: both fail the build). It does **not** check device-specific things (device API level, memory limit, device fonts).
+  `-d fenix9pro47mm` and `-e` fail with "Invalid device id specified" / "Device id 'fenix9pro47mm' listed in the manifest file is not recognized" until the device files are installed.
+Status: host tests VERIFIED-ON-BOX (pass); device-less strict build VERIFIED-ON-BOX (normal, `-t`, `-k`); unit tests in the simulator and the device build **UNVERIFIED** (G-1).
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
 |---|---|---|---|
-| G-1 | **Project has never been compiled; no simulator run; no real screenshots.** | The device files for `fenix9pro47mm` are served only to a logged-in Garmin account (`api.gcs.garmin.com/ciq-product-onboarding/devices` -> HTTP 401). No credentials were available and none were guessed or bypassed; no device files were fabricated. `monkeyc` cannot build without them. | Run `scripts/install-sdk.sh` (or the official SDK Manager) with your Garmin account, then `scripts/build.sh`. Fix any compiler message - strict mode may flag small typing details I could not test. |
-| G-2 | Burn-in compliance not measured | needs simulator heat map / watch | Simulator: *File -> View Screen Heat Map*; also watch for 10+ min in always-on |
+| G-1 | **No device build (`-d fenix9pro47mm`), no `.iq`, no simulator run, no unit-test run, no real screenshots.** Device-less strict build passes (D-22). | The device files are served only to a logged-in Garmin account. On 2026-10-24 the SDK licence hash was accepted and `connect-iq-sdk-manager login` was run with the provided account from the environment: it failed with `could not login: wrong usename or password?` (exit 1). Not retried further (account lock risk), not worked around; no device files fabricated. In addition the box (Debian 13) lacks `libwebkit2gtk-4.0` for the simulator. | Check the account works at sso.garmin.com (and whether it has MFA), or log in with the official SDK Manager; then `scripts/install-sdk.sh`, `scripts/build.sh`, `xvfb-run -a scripts/run-unit-tests.sh`. |
+| G-2 | Burn-in compliance only estimated (host model, stand-in fonts: max 4.0 % pixels, 3.0 % luminance, 2-min runs) | needs simulator heat map / watch | Simulator: *File -> View Screen Heat Map*; also watch for 10+ min in always-on |
 | G-3 | Glyph centring of the colon dots, final font choice and spacing not seen with real fonts | needs simulator | adjust `dotOffset` (14 %) in `drawTime` |
 | G-4 | Colon glyph in number fonts undocumented | docs silent | circles are used, no dependency |
 | G-5 | Hebrew date rendering / RTL order unverified | needs device language Hebrew | test in simulator with language set to Hebrew |
@@ -267,9 +344,12 @@ Status: design decision; based on the project state, not on runtime behaviour.
 | G-9 | Device's API level not stated in the device page | stored in login-gated device files | the first build tells you (compiler error if `minApiLevel` is too high) |
 | G-10 | SDK licence | The agreement must be read and accepted by you (a person) | `connect-iq-sdk-manager agreement view`, then set the repo variable `CIQ_AGREEMENT_HASH` |
 | G-11 | Exact place of the on-device settings on the fēnix 9 Pro | docs only say "the system Watch Face menu"; no fēnix 9 manual was checked | look in the watch-face menu (where faces are chosen/edited) |
-| G-12 | Coexistence of `getSettingsView()` with the native editor on fēnix 8+/9; whether `onSettingsChanged()` fires after an on-device change; whether `MenuItem.setSubLabel` + `Menu2.updateItem` refresh the visible menu immediately | not documented | test on the simulator/watch; the face re-reads properties each update anyway |
+| G-12 | Coexistence of `getSettingsView()` with the native editor on fēnix 8+/9; whether `onSettingsChanged()` fires after an on-device change; whether `MenuItem.setSubLabel` + `Menu2.updateItem` refresh the visible menu immediately | not documented | test on the simulator/watch; the menu reloads the settings cache itself (D-08) |
 | G-13 | Which font each size really gets; long localised dates (e.g. Hebrew) wider than the sample "Wed 30 Sep" | font widths not documented; needs device files | check all 3 sizes x 2 modes in the simulator, also in Hebrew |
 | G-14 | Hebrew in the menu sub-labels / phone settings list | needs device/phone | look at both with the language set to Hebrew |
+| G-15 | Real battery cost (profiler numbers, battery drain per day) | needs simulator profiler or the watch with a `-k` build | README "Battery" |
+| G-16 | Whether `drawText` with a transparent background + black overdraw gives a clean hollow glyph with Garmin's anti-aliased fonts (model: yes), and the exact `monkeydo -t` output format | not documented; needs simulator | look in the simulator; adjust `scripts/run-unit-tests.sh` grep if needed |
+| G-17 | CI `build` job (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
 ## What WAS verified in this session
 
@@ -280,3 +360,6 @@ Status: design decision; based on the project state, not on runtime behaviour.
 * Launcher icon is 65 x 65 PNG (D-01).
 * The colour list in `settings.xml` equals `NoirSettings.colorValues()`; every `Rez.Strings`/`@Strings` id used exists in both English and Hebrew strings (script check).
 * All doc URLs cited in D-08, D-15 - D-17 returned HTTP 200 (2026-10-24).
+* Strict (`-l 3 -w`) device-less builds of the normal, unit-test (`-t`) and profiling (`-k`) variants: `BUILD SUCCESSFUL` (D-22).
+* 18 host tests pass; full-day AOD model report in `docs/burn-in-report.md`.
+* Garmin login with the SDK manager CLI was attempted and failed (G-1).

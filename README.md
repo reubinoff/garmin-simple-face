@@ -12,16 +12,17 @@ hour colour and minute colour (8 colours each).
 
 * Target: `fenix9pro47mm` (454 x 454 round AMOLED) - nothing else.
 * No permissions, no network, no background service.
-* Always-on mode: smaller, dimmer, and shifted every minute for AMOLED burn-in protection.
+* Always-on mode: **everything stays the same size**; the hour/minute digits and the colon are drawn as **outlines only**, date and steps dimmer.
+  Shifted every minute plus a rotating 1-in-3 row mask for AMOLED burn-in protection (DECISIONS.md D-19; model estimate 2.7 - 4 % of pixels lit).
 * Hebrew + English settings.
-* Always-on keeps the time at most `NUMBER_MILD` size whatever the size setting (burn-in limits).
+* Battery-minded: no timers, no partial updates, no sensors/background, settings and texts cached (D-21).
 
 > ### Status - read this first
-> The code, resources, scripts and CI were written against the official SDK 9.3.0 documentation, template and sample projects, and
-> all resource XML validates against the SDK's schema. **The project has not been compiled yet**: Garmin only serves the
-> `fenix9pro47mm` device files to a logged-in Garmin account, and none was available when this was created. So there is
-> **no build result and no simulator screenshot yet**, only design mockups in `docs/mockups/` (they are labelled as mockups).
-> Your first build is therefore the real test; see [DECISIONS.md](DECISIONS.md) "Open gaps". Everything is set up so that this first build is one command (or one push).
+> * **Verified:** strict (`-l 3 -w`) compile of the app, the unit-test build and the profiling build with SDK 9.3.0 **without device files**
+>   (`BUILD SUCCESSFUL`; parser, symbols and strict types checked, device-specific checks not), 18 host tests pass, all resource XML validates.
+> * **Not yet done:** a build for the device (`-d fenix9pro47mm`), the `.iq`, the Connect IQ unit tests in the simulator and real screenshots.
+>   Garmin serves the device files only to a logged-in account; the login attempt from the build box failed (`could not login: wrong usename or password?`).
+>   `docs/mockups/` are drawings from the host model with stand-in fonts and are labelled as mockups. See [DECISIONS.md](DECISIONS.md) G-1.
 
 Design decisions and the official source for every technical choice: **[DECISIONS.md](DECISIONS.md)**.
 
@@ -33,13 +34,17 @@ monkey.jungle           project.manifest + project.typecheck = strict
 source/NoirTimeApp.mc   AppBase (settings change -> redraw, getSettingsView -> on-watch menu)
 source/NoirSettings.mc  setting keys, values, labels (read/write helpers)
 source/NoirTimeSettingsMenu.mc  on-watch settings menu (Menu2)
-source/NoirTimeView.mc  the watch face
+source/NoirTimeView.mc  the watch face (drawing only)
+source/NoirLayout.mc    pure layout / AOD helpers (fit check, outline width, shift, row mask, formatting) - unit-tested
+source/tests/           Connect IQ (:test) unit tests (excluded from normal builds)
+tests/host/             host tests (Python): resources vs code, model of the drawing code, AOD burn-in harness; stand-in OFL fonts
 resources/              strings, properties.xml (TimeSize, HourColor, MinuteColor), settings.xml (lists), launcher icon 65x65
 resources-heb/          Hebrew settings strings
-scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh
-.github/workflows/      build.yml  (static checks + signed build + artifacts)
+scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh, run-unit-tests.sh
+.github/workflows/      build.yml  (static checks + host tests; signed build + unit tests + artifacts)
 store/                  store description, release notes, screenshot checklist
 docs/mockups/           design mockups (NOT simulator screenshots) + docs/tools/make_mockups.py
+docs/burn-in-report.md  full-day always-on estimate (tests/host/burnin_report.py)
 ```
 
 ## 1. Build locally
@@ -71,10 +76,30 @@ Check, and take real screenshots into `docs/screenshots/`:
 1. Time/date/steps centred, nothing cut off by the round edge.
 2. Change `TimeSize`, `HourColor` and `MinuteColor` with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 3 sizes in high power and always-on: nothing may overlap or touch the round edge.
    On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Noir Time* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
-3. Always-on: switch the simulated display to low power (menu not named in the docs I used) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
+3. Always-on: digits must be the same size as in step 2, hollow (outline only); switch the simulated display to low power (menu not named in the docs I used) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
 4. 12h/24h: change the simulated time format.
 5. Steps: the docs name **Simulation -> Activity Data** for simulated activity data; check the steps text with 0, 999, 1 000, 12 345 and 100 000+ values.
 6. Set the language to Hebrew and look at the date.
+
+## Tests
+```bash
+python3 -m unittest discover -s tests/host -v          # host tests, no SDK needed (numpy, Pillow, lxml)
+CIQ_RESOURCES_XSD=<sdk>/bin/resources.xsd python3 -m unittest discover -s tests/host -v   # + schema validation
+python3 tests/host/burnin_report.py                    # full-day AOD estimate -> docs/burn-in-report.md
+scripts/run-unit-tests.sh                              # Connect IQ unit tests: monkeyc -t, connectiq, monkeydo -t
+xvfb-run -a scripts/run-unit-tests.sh                  # same, headless (simulator needs libwebkit2gtk-4.0, e.g. Ubuntu 22.04)
+```
+The host model uses stand-in fonts (Garmin's are inside the login-gated device files), so its pixel numbers are estimates; the simulator Heat Map is the real check.
+
+## Battery
+What the face does to keep the drain low (details and doc links: DECISIONS.md D-21): no `onPartialUpdate`, no timers, no background service,
+no sensors, no permissions, system fonts only; settings cached and re-read only when they change; date/time strings rebuilt once a minute,
+the steps string only when the count changes; in always-on it draws once a minute with 2.7 - 4 % of the pixels lit (model).
+How to measure it yourself:
+1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
+2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load
+   `GARMIN/APPS/LOGS/NoirTime.PRF` with the profiler's *Load* button (Profiling guide).
+3. Real drain: charge to 100 %, wear the watch 24 h with a native face, then 24 h with Noir Time (same always-on setting and activity), compare the battery %.
 
 ## 3. Install on your watch (sideload)
 Per the "Your First App" guide: build the PRG (`build/NoirTime.prg`), connect the watch with USB, and copy it to the watch's `GARMIN/APPS` folder. Eject the watch,
@@ -95,7 +120,7 @@ Configure once in the repo (**Settings -> Secrets and variables -> Actions**):
 | Secret | `CIQ_DEVELOPER_KEY_B64` | contents of `~/.connectiq-keys/developer_key.der.b64` (created by `scripts/keygen.sh`) |
 
 The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `NoirTime.prg` and `NoirTime.iq` as the artifact **NoirTime-fenix9pro47mm**.
-The `static-checks` job needs no secrets.
+The `static-checks` job needs no secrets and also runs the host tests. The `build` job runs the Connect IQ unit tests under `xvfb`; without the secrets it is skipped with a warning.
 Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and Garmin SSO may require MFA or block CI IPs. If CI login fails, build locally (section 1).
 
 ## 5. Publish to the Connect IQ Store
@@ -109,10 +134,10 @@ Uploading and accepting the developer agreement is an action only you can do und
 ## Changing things
 * Colours / sizes: `resources/settings/settings.xml` (phone) **and** `source/NoirSettings.mc` (watch menu) - keep both lists identical; labels in `resources*/strings/strings.xml`.
   Defaults in `resources/properties/properties.xml` must be one of the list values.
-* Size -> font mapping and the fit check: `timeFontCandidates()` / `fits()` in `source/NoirTimeView.mc` (DECISIONS.md D-17).
-* Colon colour rule: `onUpdate()` (D-15).
-* Layout constants: top of `source/NoirTimeView.mc`.
-* Steps label, 12/24h handling: `stepsText()`, `drawTime()`.
+* Size -> font mapping and the fit check: `fontCandidates()` / `blockFits()` in `source/NoirLayout.mc` (DECISIONS.md D-17, D-20).
+* Colon colour rule: `NoirLayout.colonColor()` (D-15).
+* Layout / AOD constants: top of `source/NoirLayout.mc` (run the tests after changing them).
+* Steps label, 12/24h handling: `NoirLayout.formatSteps()`, `formatHour()`.
 
 ## Licence
-No licence file is included; add one that suits you before making the repository public. Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI).
+No licence file is included; add one that suits you before making the repository public. Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI); test fonts Rajdhani and Roboto (SIL OFL, `tests/host/fonts/`).

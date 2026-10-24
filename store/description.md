@@ -13,7 +13,7 @@ Noir Time is a minimal watch face for the fēnix® 9 Pro 47mm.
 • Choose the colour of the hours and of the minutes separately (white, cyan, green, yellow, orange, red, pink, purple)
 • Three time sizes: Small, Medium, Large - the layout always fits the round screen
 • Change the settings in Garmin Connect on your phone or directly on the watch (Watch Face menu)
-• Always-on mode is dimmed and moves slightly every minute to protect the screen
+• Always-on mode keeps the same size with outline-only digits, and moves slightly every minute to protect the screen
 • Follows your 12/24-hour setting and your watch language
 • No permissions, no phone connection needed, no ads, collects no data
 

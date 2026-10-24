@@ -9,7 +9,7 @@ Suggested set:
 1. Default (white time, Medium), high power, a realistic time such as 10:08, steps in the thousands.
 2. Two colours (e.g. white hours, cyan minutes) to show the separate colours.
 3. Small and Large size.
-4. Always-on (low power) mode.
+4. Always-on (low power) mode: same size, outline-only digits.
 5. The on-watch settings menu (Time Size / Hour Color / Minute Color) - from the simulator or the watch.
 6. The settings page in Garmin Connect (phone screenshot).
 
