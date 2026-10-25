@@ -33,18 +33,6 @@ scripts/build.sh      # -> build/NoirTime.prg and build/NoirTime.iq
 Connect the watch over USB, copy `build/NoirTime.prg` to the watch's `GARMIN/APPS` folder, eject, then pick
 **Noir Time** from the watch faces list.
 
-## Publishing to the store
-
-The **Build store package** action (GitHub *Actions* tab -> *Build store package* -> *Run workflow*) builds, signs and tests
-the watch face and puts `NoirTime.iq`, `NoirTime.prg` and ready-made store images on a GitHub Release.
-
-1. Set the `version` attribute in `manifest.xml`, then click **Run workflow** and enter the same **version** and the **What's New** text.
-2. Download `NoirTime.iq` (and `cover.png` / `screenshot_*`) from the new Release.
-3. Upload it in the [Garmin Developer Dashboard](https://apps.garmin.com/developer/dashboard) and submit for review.
-   Garmin has no upload API, so this last step is always done by hand.
-
-**Keep your developer key safe:** every update must be signed with the same key (secret `CIQ_DEVELOPER_KEY_B64`).
-With a different key Garmin rejects the update. Setup details: [developer guide](docs/DEVELOPMENT.md#4-github-actions).
 
 ## More
 
