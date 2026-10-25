@@ -7,6 +7,7 @@
 #   (Garmin Connect IQ brand guidelines, "App Store Assets": https://developer.garmin.com/brand-guidelines/connect-iq).
 #   For watch faces Garmin suggests a preview of the face; the round screen of the Large yellow/white shot is used.
 # * screenshot_*: every docs/screenshots/active_* and aod_* frame, PNG if under 150 KB, else JPG (quality stepped down).
+# * hero_1440x720.png, icon_64color_128.png, icon_24bit_128.png: copied unchanged from store/hero and store/icons.
 # Needs ImageMagick (`magick` 7 or `convert` 6). Problems are reported as warnings; the script exits 0 on image problems.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -43,10 +44,17 @@ for f in docs/screenshots/active_*.png docs/screenshots/aod_*.png; do
   fi
 done
 
+# Committed store assets ride along with every release: hero image (1440 x 720, store limit 2048 KB) and the two
+# 128 x 128 device icons (64-color and 24-bit). They are copied as-is; a missing or failed copy is only a warning.
+for a in store/hero/hero_1440x720.png store/icons/icon_64color_128.png store/icons/icon_24bit_128.png; do
+  if [ -f "$a" ]; then cp "$a" "$OUT"/ || warn "$(basename "$a") could not be copied"
+  else warn "$a missing - not attached to the release"; fi
+done
+
 for f in "$OUT"/*; do
   [ -f "$f" ] || continue
   sz=$(stat -c %s "$f")
-  case "$f" in */cover.png) ;; *) [ "$sz" -le "$LIMIT" ] || warn "$(basename "$f") is $sz bytes (> 150 KB)";; esac
+  case "$f" in */cover.png|*/hero_*.png|*/icon_*.png) ;; *) [ "$sz" -le "$LIMIT" ] || warn "$(basename "$f") is $sz bytes (> 150 KB)";; esac
   echo "$(basename "$f")  $("$IM" identify -format '%wx%h %[colorspace] alpha=%A' "$f" 2>/dev/null || identify -format '%wx%h %[colorspace] alpha=%A' "$f")  $sz bytes"
 done
 exit 0

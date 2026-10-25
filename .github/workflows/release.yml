@@ -96,7 +96,7 @@ jobs:
           dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" scripts/run-unit-tests.sh || {
             echo "::group::simulator log"; cat build/simulator.log 2>/dev/null || true; echo "::endgroup::"; exit 1; }
 
-      - name: Store images (cover 500x500 sRGB + screenshots under 150 KB; warnings only)
+      - name: Store images (cover 500x500 sRGB + screenshots under 150 KB + hero + icons; warnings only)
         continue-on-error: true
         run: |
           sudo apt-get install -y -qq imagemagick || echo "::warning::ImageMagick install failed - no store images"
@@ -111,6 +111,8 @@ jobs:
           else printf 'Noir Time %s for the fenix 9 Pro 47mm. Store package (NoirTime.iq), sideload build (NoirTime.prg) and store images.\n' "$INPUT_VERSION" > "$notes"; fi
           files=(build/NoirTime.iq build/NoirTime.prg)
           if compgen -G "store-assets/*" > /dev/null; then files+=(store-assets/*); fi
+          # Re-running the same version refreshes the release instead of failing on an existing tag.
+          gh release delete "v$INPUT_VERSION" --yes --cleanup-tag || true
           gh release create "v$INPUT_VERSION" "${files[@]}" --title "Noir Time $INPUT_VERSION" --notes-file "$notes" --target "$GITHUB_SHA"
 
       - name: Summary - upload to the store by hand
@@ -126,6 +128,7 @@ jobs:
             echo "- [ ] Dashboard: **Submit an App** (first version) or open Noir Time and upload a new version"
             echo "- [ ] Type exactly the same version: \`$INPUT_VERSION\`"
             echo "- [ ] Attach \`cover.png\` and the \`screenshot_*\` images from the release"
+            echo "- [ ] Hero image (\`hero_1440x720.png\`) and the two device icons (\`icon_64color_128.png\`, \`icon_24bit_128.png\`) are attached to the release too"
             echo "- [ ] Paste the What's New text and **submit for review**"
             echo
             echo "Every update must be signed with the same developer key (secret CIQ_DEVELOPER_KEY_B64) - keep a backup of it."
