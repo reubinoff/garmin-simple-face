@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Builds the (:test) functions in source/tests/ and runs them in the Connect IQ simulator (Run No Evil).
 #   scripts/run-unit-tests.sh [--key /path/developer_key.der]
-# Needs monkeyc/connectiq/monkeydo on PATH and the fenix9pro47mm device files (scripts/install-sdk.sh).
+# Needs monkeyc/connectiq/monkeydo on PATH and the device files (scripts/install-sdk.sh); CIQ_DEVICE picks the product.
 # Headless (CI): with no $DISPLAY the script re-runs itself under `xvfb-run -a`, and with no D-Bus session bus under
 # `dbus-run-session` (the simulator is a GTK app and logs AT-SPI / dbind errors without one).
 # Commands from "Unit Testing" (https://developer.garmin.com/connect-iq/core-topics/unit-testing/) and
 # "Using Monkey C from the Command Line" (monkeydo ... -t).
-# Tunables: CIQ_SIM_READY_TIMEOUT (s, default 60), CIQ_SIM_ATTEMPTS (default 3), CIQ_SIM_SETTLE (s after the port opens, default 3).
+# Tunables: CIQ_DEVICE (default fenix9pro47mm), CIQ_SIM_READY_TIMEOUT (s, default 60), CIQ_SIM_ATTEMPTS (default 3), CIQ_SIM_SETTLE (s after the port opens, default 3).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,7 +21,7 @@ export NO_AT_BRIDGE=1   # GTK: do not look for the accessibility bus
 
 KEY="${CIQ_DEVELOPER_KEY_PATH:-$HOME/.connectiq-keys/developer_key.der}"
 if [ "${1:-}" = "--key" ]; then KEY="$2"; fi
-DEVICE="fenix9pro47mm"
+DEVICE="${CIQ_DEVICE:-fenix9pro47mm}"   # any product in manifest.xml (D-36)
 READY_TIMEOUT="${CIQ_SIM_READY_TIMEOUT:-60}"
 ATTEMPTS="${CIQ_SIM_ATTEMPTS:-3}"
 SETTLE="${CIQ_SIM_SETTLE:-3}"

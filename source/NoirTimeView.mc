@@ -22,6 +22,9 @@ import Toybox.WatchUi;
 class NoirTimeView extends WatchUi.WatchFace {
 
     private var _inLowPower as Boolean = false;
+    // True on AMOLED screens (DeviceSettings.requiresBurnInProtection, API 3.0.12). Only these get the outline /
+    // shift / row-mask always-on style; MIP screens keep the normal look in low power (DECISIONS.md D-36).
+    private var _burnIn as Boolean = true;
 
     // Layout cache: recomputed only when the size setting changes (or on a new layout).
     private var _layoutKey as Number = -1;
@@ -57,6 +60,10 @@ class NoirTimeView extends WatchUi.WatchFace {
     function initialize() {
         WatchFace.initialize();
         _bodyBatteryAvailable = NoirBodyBattery.isAvailable();
+        var settings = System.getDeviceSettings();
+        if (settings has :requiresBurnInProtection) {
+            _burnIn = settings.requiresBurnInProtection;
+        }
     }
 
     function onLayout(dc as Dc) as Void {
@@ -84,7 +91,8 @@ class NoirTimeView extends WatchUi.WatchFace {
         var clock = System.getClockTime();
         updateTexts(clock);
 
-        var lowPower = isLowPower();
+        // Burn-in style only where the screen needs it (D-36); on MIP low power looks like active mode.
+        var lowPower = _burnIn && isLowPower();
         var hourColor = NoirSettings.hourColor();
         var minuteColor = NoirSettings.minuteColor();
         var colonColor = NoirLayout.colonColor(hourColor, minuteColor);
@@ -297,11 +305,13 @@ class NoirTimeView extends WatchUi.WatchFace {
     //! XX-Large (D-24): the largest scalable font (Graphics.getVectorFont, API 4.2.1) that fits, tried from
     //! XXL_SIZE_MAX down. Returns false (caller falls back to the X-Large system fonts) if the API or the faces are
     //! not available or nothing fits. Called once per size change only; the chosen VectorFont is kept in _timeFont.
+    (:ciq4)
     private function chooseVectorFont(dc as Dc, dateWidth as Number, statsFont as Graphics.FontType) as Boolean {
         if (!(Graphics has :getVectorFont)) {
             return false;
         }
-        for (var px = NoirLayout.XXL_SIZE_MAX; px >= NoirLayout.XXL_SIZE_MIN; px -= NoirLayout.XXL_SIZE_STEP) {
+        var width = dc.getWidth();
+        for (var px = NoirLayout.xxlSizeMax(width); px >= NoirLayout.xxlSizeMin(width); px -= NoirLayout.XXL_SIZE_STEP) {
             var font = Graphics.getVectorFont({ :face => NoirLayout.xxlFaces(), :size => px });
             if (font == null) {
                 return false;
@@ -311,6 +321,13 @@ class NoirTimeView extends WatchUi.WatchFace {
                 return true;
             }
         }
+        return false;
+    }
+
+    //! Devices below API 4.2.1 (Forerunner 245 / 745 / 945 / 55 / 645 / 935, D-36): no Graphics.getVectorFont, which the
+    //! compiler rejects for them even behind a `has` check, so this variant is built instead; XX-Large = X-Large there.
+    (:ciq3)
+    private function chooseVectorFont(dc as Dc, dateWidth as Number, statsFont as Graphics.FontType) as Boolean {
         return false;
     }
 
@@ -360,10 +377,18 @@ class NoirTimeView extends WatchUi.WatchFace {
     }
 
     //! True when the watch is in always-on / low power mode.
+    (:ciq4)
     private function isLowPower() as Boolean {
         if (System has :getDisplayMode) {
             return System.getDisplayMode() == System.DISPLAY_MODE_LOW_POWER;
         }
+        return _inLowPower;
+    }
+
+    //! API 3.x devices (D-36): System.getDisplayMode (API 5.0.0) is unknown to the compiler there; use the
+    //! onEnterSleep / onExitSleep state.
+    (:ciq3)
+    private function isLowPower() as Boolean {
         return _inLowPower;
     }
 

@@ -16,6 +16,8 @@ which is what was actually read when the page itself is JavaScript-rendered.
 
 ## D-01 Target device: `fenix9pro47mm` (fēnix® 9 Pro 47mm)
 
+*Extended by D-36: the manifest now lists 38 products; fenix9pro47mm stays the reference device (layout constants, default PRG and tests).*
+
 | Fact | Value | Source |
 |---|---|---|
 | Product id (used in `manifest.xml`, `monkeyc -d`) | `fenix9pro47mm` | `device-reference/fenix9pro47mm/` (also `sdk/doc/docs/Device_Reference/fenix9pro47mm.html`) |
@@ -643,6 +645,115 @@ Status: VERIFIED-DOC (rules), VERIFIED-ON-BOX (profile, burn-in); watch battery 
   `timeout-minutes: 15`. The step stays fatal (no `continue-on-error`). Status: VERIFIED-ON-BOX (23/23 with and without a preset
   `$DISPLAY`); the GitHub runner is not run from here (G-17).
 
+## D-36 Multi-device: every fēnix 8 / fēnix 9 model and the round Forerunners (2026-10-25)
+
+Owner's question: can the face run on all fēnix 8 and 9 versions and on Forerunner watches. Answer: yes for 38 device IDs, all built,
+12 of them unit-tested in the simulator.
+
+**Sources.**
+* Device list and names: Garmin's compatible devices table, <https://developer.garmin.com/connect-iq/compatible-devices/> (HTTP 200,
+  2026-10-25). Several products share one device ID; e.g. `fenix847mm` = fēnix 8 47mm / 51mm, tactix 8, quatix 8; `fenix8pro47mm` = fēnix 8 Pro 47mm / 51mm / MicroLED, quatix 8 Pro.
+* Per-device facts: the official device files downloaded by the SDK manager (`device list --download-all`, then
+  `device download -d <id> --include-fonts`): `compiler.json` (`resolution`, `displayType`, `bitsPerPixel`, `palette`,
+  `partNumbers[].connectIQVersion`, watch-face `memoryLimit`), `simulator.json`, and `<id>.api.debug.xml` (`VERIFIED-SDK`).
+* API levels ("Since" in the SDK's API docs, `VERIFIED-DOC`): `Graphics.getVectorFont` 4.2.1, `System.getDisplayMode` 5.0.0,
+  `SensorHistory.getBodyBatteryHistory` 3.3.0, `AppBase.getSettingsView` 3.2.0, `DeviceSettings.requiresBurnInProtection` 3.0.12
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics.html>, `.../Toybox/System.html`, `.../Toybox/SensorHistory.html`,
+  `.../Toybox/Application/AppBase.html`, `.../Toybox/System/DeviceSettings.html`).
+* Jungle: per-device `excludeAnnotations` and `resourcePath` (<https://developer.garmin.com/connect-iq/core-topics/build-configuration/>,
+  <https://developer.garmin.com/connect-iq/reference-guides/jungle-reference/>).
+* AMOLED vs MIP low power: <https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>
+  ("check `DeviceSettings.requiresBurnInProtection`") and the WatchFace page
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFace.html>: low power = `onUpdate` once a minute).
+
+**Supported (manifest.xml, 38 IDs; resolution / display / CIQ API from `compiler.json`; watch-face memory 131072 B unless noted).**
+
+| Group | Device ID | Product | Screen | Display | API |
+|---|---|---|---|---|---|
+| fēnix 8 | `fenix843mm` | fēnix 8 43mm | 416 | AMOLED | 6.0.3 |
+| | `fenix847mm` | fēnix 8 47mm / 51mm, tactix 8, quatix 8 | 454 | AMOLED | 6.0.3 |
+| | `fenix8pro47mm` | fēnix 8 Pro 47mm / 51mm / MicroLED, quatix 8 Pro | 454 | AMOLED | 6.0.3 |
+| | `fenix8solar47mm` | fēnix 8 Solar 47mm | 260 | MIP | 6.0.3 |
+| | `fenix8solar51mm` | fēnix 8 Solar 51mm, tactix 8 Solar 51mm | 280 | MIP | 6.0.3 |
+| | `fenixe` | fēnix E | 416 | AMOLED | 6.0.3 |
+| fēnix 9 | `fenix943mm` | fēnix 9 43mm | 416 | AMOLED | 6.0.3 |
+| | `fenix947mm` | fēnix 9 47mm / 51mm | 454 | AMOLED | 6.0.3 |
+| | `fenix9pro43mm` | fēnix 9 Pro 43mm | 416 | AMOLED | 6.0.3 |
+| | `fenix9pro47mm` | fēnix 9 Pro 47mm | 454 | AMOLED | 6.0.3 |
+| | `fenix9pro51mm` | fēnix 9 Pro 51mm | 466 | AMOLED | 6.0.3 |
+| | `fenix9prosolar47mm` | fēnix 9 Pro Solar 47mm | 260 | MIP | 6.0.3 |
+| | `fenix9prosolar51mm` | fēnix 9 Pro Solar 51mm | 280 | MIP | 6.0.3 |
+| Forerunner | `fr165`, `fr165m` | 165, 165 Music | 390 | AMOLED | 5.2.0 |
+| | `fr170`, `fr170m` | 170, 170 Music | 390 | AMOLED | 6.0.3 |
+| | `fr70` | 70 | 390 | AMOLED | 6.0.3 |
+| | `fr265` | 265 | 416 | AMOLED | 5.2.0 |
+| | `fr265s` | 265S | 360 | AMOLED | 5.2.0 |
+| | `fr57042mm` | 570 42mm | 390 | AMOLED | 6.0.3 |
+| | `fr57047mm` | 570 47mm | 454 | AMOLED | 6.0.3 |
+| | `fr965` | 965 | 454 | AMOLED | 5.2.0 |
+| | `fr970` | 970 | 454 | AMOLED | 6.0.3 |
+| | `fr255`, `fr255m` | 255, 255 Music | 260 | MIP | 5.2.0 |
+| | `fr255s`, `fr255sm` | 255S, 255S Music | 218 | MIP | 5.2.0 |
+| | `fr955` | 955 / Solar | 260 | MIP | 5.2.0 |
+| | `fr245`, `fr245m`, `fr745`, `fr945` | 245, 245 Music, 745, 945 | 240 | MIP | 3.3.1 (98304 B) |
+| | `fr945lte` | 945 LTE | 240 | MIP | 3.4.3 (98304 B) |
+| | `fr55` | 55 | 208 | MIP, 8-colour palette | 3.4.2 (98304 B) |
+| | `fr645`, `fr645m` | 645, 645 Music | 240 | MIP | 3.1.6 / 3.2.3 (98304 B) |
+| | `fr935` | 935 | 240 | MIP | 3.1.6 (98304 B) |
+
+**Excluded Forerunners (and why).** `fr230`, `fr235`, `fr630` (semi-round 215 x 180, API 1.4), `fr735xt` (semi-round, API 2.4),
+`fr920xt` (rectangle 205 x 148, API 1.4), `fr45` (API 1.4, 49152 B watch-face memory). All are below API 3.0 (`WatchUi.Menu2`, used by
+the on-device settings, is 3.0.0) and/or have a non-round screen; the layout and fit check are written for round screens
+(`testDeviceScreen` asserts `SCREEN_SHAPE_ROUND`). Supporting them would need a second layout and a menu-less, properties-less code path.
+Older fēnix models (fēnix 5/6/7) were not asked for and are not added.
+
+**Code changes.**
+* `manifest.xml`: 38 products (sorted), `minApiLevel` 5.0.0 -> **3.1.0** (lowest `connectIQVersion`: fr645 / fr935 3.1.6). Permission and
+  languages unchanged.
+* Annotations (strict `monkeyc` rejects a symbol a device lacks even behind a `has` check, e.g.
+  `Value '$.Toybox.Graphics.getVectorFont' is not supported for device 'fr245'` - seen on the box):
+  * `(:ciq4)` / `(:ciq3)` variants of `chooseVectorFont` and `isLowPower`. API 3.x devices get `chooseVectorFont() = false` (XX-Large
+    falls back to the X-Large system font) and `isLowPower()` from `onEnterSleep`/`onExitSleep` (`_inLowPower`) instead of `getDisplayMode`.
+  * `(:bodybattery)` / `(:nobodybattery)` variants in `NoirBodyBattery` (645 / 645 Music / 935 are below 3.3.0: Body Battery hidden).
+  * `monkey.jungle`: `base.excludeAnnotations = ciq3;nobodybattery`; `ciq4;nobodybattery` for fr245/fr245m/fr745/fr945/fr945lte/fr55;
+    `ciq4;bodybattery` for fr645/fr645m/fr935.
+* Resolution independence: the layout was already proportional (percent of the screen). The one absolute value, the XX-Large vector
+  font range 240..180 px, now scales with the width: `NoirLayout.xxlSizeMax/Min(w) = 240|180 * w / 454` (unchanged on 454).
+* Burn-in style only where it is needed: `_burnIn = DeviceSettings.requiresBurnInProtection` (guarded by `has`, default true).
+  Low power uses the outline / shift / row-mask style only when `_burnIn` is true; MIP screens keep the normal look in low power
+  (they cannot burn in). Simulator logs: true on every AMOLED product tested, false on every MIP product.
+* Launcher icons: the device files ask for 65 / 60 / 54 / 40 / 35 px; scaling the 65 px icon prints a warning (breaks `-w` zero
+  warnings). `launcher-icons/<n>/drawables/` holds LANCZOS downscales of the 65 px icon, selected per device with
+  `<id>.resourcePath = $(<id>.resourcePath);launcher-icons/<n>` (the later path overrides `LauncherIcon`; the base strings, settings
+  and Hebrew resources are still included).
+* Tests: `testXxlSizeScaling`, `testDeviceScreen` (round screen, logs size and burn-in flag), `testVectorFontAvailable` and
+  `testBodyBatteryApiOnDevice` made device-aware; 25 tests. `scripts/run-unit-tests.sh` / `build.sh` take `CIQ_DEVICE`. Host test checks
+  the product list, jungle device names and icon sizes. `scripts/install-sdk.sh` already downloads by `--manifest`, so CI now fetches
+  the device files of all 38 products (slower first run).
+
+**Status.**
+* Strict build `monkeyc -d <id> -f monkey.jungle -l 3 -w -r` for **all 38** IDs: `BUILD SUCCESSFUL`, 0 warnings (`VERIFIED-ON-BOX`).
+  `.iq` (`-e -l 3 -w`): `BUILDING FOR 52 DEVICES` (part numbers), `BUILD SUCCESSFUL`, 0 warnings.
+* Simulator unit tests `PASSED (passed=25, failed=0, errors=0)` on 12 devices covering every resolution / display / API class:
+  fenix9pro47mm (454), fenix9pro51mm (466), fenix843mm (416), fr165 (390), fr265s (360), fr970 (454, API 6), fenix9prosolar47mm
+  (260 MIP), fenix8solar51mm (280 MIP), fr255s (218 MIP), fr245 (240 MIP, API 3.3), fr645 (240 MIP, API 3.1, no Body Battery), fr55
+  (208, 8 colours). Simulator memory: ~16 of 124 kB (API 5/6), ~19 of 92 kB (98304 B devices).
+* Screenshots (simulator window crops, downscaled to 640 px high, 256 colours): `docs/screenshots/devices/`. One MIP low-power shot
+  with a temporary build forcing `_burnIn = true` shows that low power does engage on MIP in the simulator; the committed code keeps
+  the normal look there.
+* UNVERIFIED (G-21 - G-24): look on real MIP screens and the 466 px Pro 51mm, battery on each watch, palette mapping on MIP (64 colours)
+  and fr55 (8 colours: several of the 16 colours collapse), on-device settings menu on fr645m (API 3.2) - fr645 / fr935 (API 3.1, no
+  `getSettingsView`) have settings in Garmin Connect only.
+
+## D-37 Store and README wording for the Sensor History permission (2026-10-25)
+
+* `store/description.md` has a **Permissions** note: "The Sensor History permission is used only to display Body Battery. No other
+  sensor data is read, and nothing ever leaves the watch." README has the same reassurance on the Body Battery feature line.
+* Basis: the code. The only `SensorHistory` call is `getBodyBatteryHistory` in `source/NoirBodyBattery.mc` (`period: 1`); the manifest
+  asks only for `SensorHistory` (<https://developer.garmin.com/connect-iq/core-topics/manifest-and-permissions/>), with no
+  `Communications`/`Background`/`Positioning` permission, so the app cannot send data off the watch. `VERIFIED-SDK` (manifest + source
+  read; host test checks the permission list).
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -666,6 +777,10 @@ Status: VERIFIED-DOC (rules), VERIFIED-ON-BOX (profile, burn-in); watch battery 
 | G-18 | Body Battery value / update rate on the real watch | simulator returns a fixed value (88) | wear it and compare with the Garmin widget |
 | G-19 | Steps value in the screenshots is 0 | simulator *Activity Monitoring* dialog did not take a value in this session | real data on the watch; icon and layout are verified |
 | G-20 | Store version format / 20-character limit | not in the Garmin pages read; the limit comes from the owner's brief | check the upload form |
+| G-21 | Look of the face on real MIP (Solar, Forerunner 2xx/9xx) screens and on the 466 px fēnix 9 Pro 51mm | simulator only | check on a watch (D-36) |
+| G-22 | Colour mapping: 64-colour MIP palette, 8-colour fr55 palette | some of the 16 colours map to the same device colour | look on the watch; consider a reduced list later |
+| G-23 | On-device settings on fr645m (API 3.2); fr645 / fr935 (API 3.1) have no `getSettingsView` | not run in the simulator menu | phone settings work on all |
+| G-24 | Battery cost on the other 37 products | profiler only run on fenix9pro47mm | wear it |
 | G-17 | CI `build` job / `release.yml` (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
 ## What WAS verified in this session
@@ -690,3 +805,7 @@ Status: VERIFIED-DOC (rules), VERIFIED-ON-BOX (profile, burn-in); watch battery 
   `-l 3 -w`, no warnings; 23/23 simulator unit tests through the new `scripts/run-unit-tests.sh` (with `$DISPLAY` set, and with no
   `$DISPLAY` / session bus so it started `xvfb-run` + `dbus-run-session` itself; the retry path checked with `CIQ_SIM_READY_TIMEOUT=0`);
   28 host tests OK; 26 screenshots regenerated.
+* After D-36/D-37 (2026-10-25): 38 products. Strict build with `-l 3 -w -r` for each of the 38 IDs and the `.iq` (52 part numbers): no
+  warnings. 25/25 simulator unit tests on 12 devices (D-36). 29 host tests pass (device fonts + XSD, including the `launcher-icons`
+  XML); `mypy` clean; `ruff` reports no new findings (the 23 it lists with ruff's current defaults are in untouched lines). 15 device
+  screenshots in `docs/screenshots/devices/`.

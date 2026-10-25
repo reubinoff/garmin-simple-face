@@ -49,6 +49,17 @@ module NoirLayout {
     const XXL_SIZE_MAX = 240;
     const XXL_SIZE_MIN = 180;
     const XXL_SIZE_STEP = 4;
+    // XXL_SIZE_MAX / XXL_SIZE_MIN are for the 454 px reference screen; other screens scale them (D-36).
+    const REFERENCE_SCREEN = 454;
+
+    //! Largest / smallest XX-Large pixel size tried on a screen screenWidth px wide (proportional to REFERENCE_SCREEN).
+    function xxlSizeMax(screenWidth as Number) as Number {
+        return XXL_SIZE_MAX * screenWidth / REFERENCE_SCREEN;
+    }
+
+    function xxlSizeMin(screenWidth as Number) as Number {
+        return XXL_SIZE_MIN * screenWidth / REFERENCE_SCREEN;
+    }
 
     //! Scalable faces for XX-Large, preferred first (getVectorFont takes an Array of acceptable faces).
     function xxlFaces() as Array<String> {

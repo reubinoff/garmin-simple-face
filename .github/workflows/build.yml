@@ -68,7 +68,7 @@ jobs:
         with:
           go-version: stable
 
-      - name: Install Connect IQ SDK 9.3.0 and the fenix9pro47mm device files
+      - name: Install Connect IQ SDK 9.3.0 and the device files of every manifest product
         if: steps.secrets.outputs.ok == 'true'
         run: scripts/install-sdk.sh
 

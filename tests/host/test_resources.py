@@ -10,6 +10,49 @@ import re
 import unittest
 import xml.etree.ElementTree as ET
 
+# Products in manifest.xml (DECISIONS.md D-36), sorted.
+PRODUCTS = [
+    "fenix843mm",
+    "fenix847mm",
+    "fenix8pro47mm",
+    "fenix8solar47mm",
+    "fenix8solar51mm",
+    "fenix943mm",
+    "fenix947mm",
+    "fenix9pro43mm",
+    "fenix9pro47mm",
+    "fenix9pro51mm",
+    "fenix9prosolar47mm",
+    "fenix9prosolar51mm",
+    "fenixe",
+    "fr165",
+    "fr165m",
+    "fr170",
+    "fr170m",
+    "fr245",
+    "fr245m",
+    "fr255",
+    "fr255m",
+    "fr255s",
+    "fr255sm",
+    "fr265",
+    "fr265s",
+    "fr55",
+    "fr57042mm",
+    "fr57047mm",
+    "fr645",
+    "fr645m",
+    "fr70",
+    "fr745",
+    "fr935",
+    "fr945",
+    "fr945lte",
+    "fr955",
+    "fr965",
+    "fr970",
+]
+
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -105,10 +148,25 @@ class ResourcesTest(unittest.TestCase):
     def test_manifest(self):
         m = read("manifest.xml")
         self.assertIn('type="watchface"', m)
-        self.assertEqual(re.findall(r'<iq:product id="([^"]+)"', m), ["fenix9pro47mm"])
+        self.assertEqual(re.findall(r'<iq:product id="([^"]+)"', m), PRODUCTS)
+        # API 3.1.0: lowest connectIQVersion among the products (fr645 / fr935 compiler.json), D-36.
+        self.assertIn('minApiLevel="3.1.0"', m)
         self.assertEqual(sorted(re.findall(r"<iq:language>(\w+)</iq:language>", m)), ["eng", "heb"])
         # Exactly one permission: SensorHistory, for SensorHistory.getBodyBatteryHistory (D-27).
         self.assertEqual(re.findall(r'<iq:uses-permission id="([^"]+)"', m), ["SensorHistory"])
+
+    def test_jungle_devices_and_launcher_icons(self):
+        """Every device named in monkey.jungle is a manifest product; launcher-icons/<n>/ holds an n x n icon (D-36)."""
+        from PIL import Image
+        jungle = read("monkey.jungle")
+        named = set(re.findall(r"^(\w+)\.(?:excludeAnnotations|resourcePath)", jungle, re.MULTILINE)) - {"base", "project"}
+        self.assertEqual(named - set(PRODUCTS), set())
+        for size in re.findall(r"launcher-icons/(\d+)", jungle):
+            with Image.open(os.path.join(ROOT, "launcher-icons", size, "drawables", "launcher_icon.png")) as im:
+                self.assertEqual(im.size, (int(size), int(size)))
+        # API 3.x devices must take the fallback variants (no getVectorFont / getDisplayMode symbols).
+        for dev in ("fr245", "fr245m", "fr745", "fr945", "fr945lte", "fr55", "fr645", "fr645m", "fr935"):
+            self.assertRegex(jungle, rf"(?m)^{dev}\.excludeAnnotations = ciq4;")
 
     def test_no_keys_or_secrets_tracked(self):
         for f in glob.glob(os.path.join(ROOT, "**", "*"), recursive=True):
@@ -119,6 +177,7 @@ class ResourcesTest(unittest.TestCase):
         from lxml import etree
         schema = etree.XMLSchema(etree.parse(os.environ["CIQ_RESOURCES_XSD"]))
         files = glob.glob(os.path.join(ROOT, "resources*", "**", "*.xml"), recursive=True)
+        files += glob.glob(os.path.join(ROOT, "launcher-icons", "**", "*.xml"), recursive=True)
         self.assertTrue(files)
         for f in files:
             self.assertTrue(schema.validate(etree.parse(f)), "%s: %s" % (f, schema.error_log))

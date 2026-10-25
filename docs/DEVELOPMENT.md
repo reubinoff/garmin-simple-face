@@ -6,7 +6,7 @@ sideloading, CI and publishing. Every technical decision and its official Garmin
 ## Project layout
 
 ```
-manifest.xml            app id, device (fenix9pro47mm), minApiLevel 5.0.0, permission SensorHistory (Body Battery), languages eng+heb
+manifest.xml            app id, 38 products (fēnix 8 / fēnix 9 / Forerunner, D-36), minApiLevel 3.1.0, permission SensorHistory (Body Battery), languages eng+heb
 monkey.jungle           project.manifest + project.typecheck = strict
 source/NoirTimeApp.mc   AppBase (settings change -> redraw, getSettingsView -> on-watch menu)
 source/NoirSettings.mc  setting keys, values, labels (read/write helpers)
@@ -35,7 +35,7 @@ docs/burn-in-report.md  real burn-in measurements + font-accurate full-day repor
 connect-iq-sdk-manager agreement view         # see scripts/install-sdk.sh for how to install this tool
 export CIQ_AGREEMENT_HASH=<hash printed above, only after you have read and agree to the agreement>
 export GARMIN_USERNAME=... GARMIN_PASSWORD=...
-scripts/install-sdk.sh                         # SDK 9.3.0 + fenix9pro47mm device files; prints the PATH line to add
+scripts/install-sdk.sh                         # SDK 9.3.0 + device files of all manifest products; prints the PATH line to add
 scripts/keygen.sh                              # creates ~/.connectiq-keys/developer_key.der (BACK IT UP)
 scripts/build.sh                               # build/NoirTime.prg + build/NoirTime.iq, strict type check
 ```
@@ -51,6 +51,7 @@ Both scripts only call `monkeyc`; see DECISIONS.md D-12 for the exact flags (`-d
 ## 2. Test in the simulator
 ```bash
 scripts/run-simulator.sh        # builds a debug PRG, starts `connectiq`, runs `monkeydo` on fenix9pro47mm
+CIQ_DEVICE=fr255s scripts/run-unit-tests.sh   # unit tests on another product (any id in manifest.xml)
 ```
 Check, and take real screenshots into [`screenshots/`](screenshots/):
 1. Time/date/steps centred, nothing cut off by the round edge.
@@ -107,7 +108,7 @@ The `build` job runs in the GitHub Environment **`publish`** (`environment: publ
 | Secret | `GARMIN_PASSWORD` | its password (consider a dedicated Garmin account) |
 | Secret | `CIQ_DEVELOPER_KEY_B64` | contents of `~/.connectiq-keys/developer_key.der.b64` (created by `scripts/keygen.sh`) |
 
-The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `NoirTime.prg` and `NoirTime.iq` as the artifact **NoirTime-fenix9pro47mm**.
+The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `NoirTime.prg` (fenix9pro47mm) and `NoirTime.iq` (all products) as the artifact **NoirTime-fenix9pro47mm**.
 The `static-checks` job needs no secrets and also runs the host tests. The `build` job runs the Connect IQ unit tests under `xvfb`; without the secrets it is skipped with a warning.
 Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and Garmin SSO may require MFA or block CI IPs. If CI login fails, build locally (section 1).
 

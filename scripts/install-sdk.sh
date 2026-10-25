@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs the Connect IQ SDK and the fenix9pro47mm device files WITHOUT the GUI SDK Manager,
+# Installs the Connect IQ SDK and the device files of every product in manifest.xml (38, D-36) WITHOUT the GUI SDK Manager,
 # using the community CLI https://github.com/lindell/connect-iq-sdk-manager-cli (pinned, Apache-2.0).
 # This is NOT an official Garmin tool - see DECISIONS.md D-03. On a desktop you can use the official
 # SDK Manager instead (https://developer.garmin.com/connect-iq/sdk/) and skip this script.

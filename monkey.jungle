@@ -1,2 +1,51 @@
 project.manifest = manifest.xml
 project.typecheck = strict
+
+# Multi-device support, DECISIONS.md D-36. Jungle syntax: Build Configuration / Jungle Reference
+# (https://developer.garmin.com/connect-iq/core-topics/build-configuration/).
+
+# Annotations: (:ciq4) code uses API 4+/5+ symbols (Graphics.getVectorFont 4.2.1, System.getDisplayMode 5.0.0);
+# (:ciq3) is its fallback for API 3.x devices, where the compiler rejects those symbols even behind `has`.
+# (:bodybattery) uses SensorHistory.getBodyBatteryHistory (3.3.0); (:nobodybattery) is the fallback for API 3.1/3.2.
+base.excludeAnnotations = ciq3;nobodybattery
+fr245.excludeAnnotations = ciq4;nobodybattery
+fr245m.excludeAnnotations = ciq4;nobodybattery
+fr745.excludeAnnotations = ciq4;nobodybattery
+fr945.excludeAnnotations = ciq4;nobodybattery
+fr945lte.excludeAnnotations = ciq4;nobodybattery
+fr55.excludeAnnotations = ciq4;nobodybattery
+fr645.excludeAnnotations = ciq4;bodybattery
+fr645m.excludeAnnotations = ciq4;bodybattery
+fr935.excludeAnnotations = ciq4;bodybattery
+
+# Launcher icon in each device's own size (compiler.json launcherIcon); resources/ has the 65 x 65 one.
+fenix843mm.resourcePath = $(fenix843mm.resourcePath);launcher-icons/60
+fenix943mm.resourcePath = $(fenix943mm.resourcePath);launcher-icons/60
+fenix9pro43mm.resourcePath = $(fenix9pro43mm.resourcePath);launcher-icons/60
+fenixe.resourcePath = $(fenixe.resourcePath);launcher-icons/60
+fr265.resourcePath = $(fr265.resourcePath);launcher-icons/60
+fr265s.resourcePath = $(fr265s.resourcePath);launcher-icons/60
+fr165.resourcePath = $(fr165.resourcePath);launcher-icons/54
+fr165m.resourcePath = $(fr165m.resourcePath);launcher-icons/54
+fr170.resourcePath = $(fr170.resourcePath);launcher-icons/54
+fr170m.resourcePath = $(fr170m.resourcePath);launcher-icons/54
+fr57042mm.resourcePath = $(fr57042mm.resourcePath);launcher-icons/54
+fr70.resourcePath = $(fr70.resourcePath);launcher-icons/54
+fenix8solar47mm.resourcePath = $(fenix8solar47mm.resourcePath);launcher-icons/40
+fenix8solar51mm.resourcePath = $(fenix8solar51mm.resourcePath);launcher-icons/40
+fenix9prosolar47mm.resourcePath = $(fenix9prosolar47mm.resourcePath);launcher-icons/40
+fenix9prosolar51mm.resourcePath = $(fenix9prosolar51mm.resourcePath);launcher-icons/40
+fr245.resourcePath = $(fr245.resourcePath);launcher-icons/40
+fr245m.resourcePath = $(fr245m.resourcePath);launcher-icons/40
+fr255.resourcePath = $(fr255.resourcePath);launcher-icons/40
+fr255m.resourcePath = $(fr255m.resourcePath);launcher-icons/40
+fr255s.resourcePath = $(fr255s.resourcePath);launcher-icons/40
+fr255sm.resourcePath = $(fr255sm.resourcePath);launcher-icons/40
+fr645.resourcePath = $(fr645.resourcePath);launcher-icons/40
+fr645m.resourcePath = $(fr645m.resourcePath);launcher-icons/40
+fr745.resourcePath = $(fr745.resourcePath);launcher-icons/40
+fr935.resourcePath = $(fr935.resourcePath);launcher-icons/40
+fr945.resourcePath = $(fr945.resourcePath);launcher-icons/40
+fr945lte.resourcePath = $(fr945lte.resourcePath);launcher-icons/40
+fr955.resourcePath = $(fr955.resourcePath);launcher-icons/40
+fr55.resourcePath = $(fr55.resourcePath);launcher-icons/35

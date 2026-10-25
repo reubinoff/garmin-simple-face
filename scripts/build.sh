@@ -4,14 +4,14 @@
 #   scripts/build.sh [--key /path/developer_key.der] [--out build]
 #
 # Needs: Connect IQ SDK 9.3.0 `monkeyc` on PATH (see scripts/install-sdk.sh), Java 11+,
-#        the device files for fenix9pro47mm (downloaded by install-sdk.sh), a developer key.
+#        the device files for the products in manifest.xml (downloaded by install-sdk.sh), a developer key.
 # Produces: <out>/NoirTime.prg   (release build, for sideloading to GARMIN/APPS)
 #           <out>/NoirTime.iq    (store package, `monkeyc -e`)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 KEY="${CIQ_DEVELOPER_KEY_PATH:-$HOME/.connectiq-keys/developer_key.der}"
 OUT="build"
-DEVICE="fenix9pro47mm"
+DEVICE="${CIQ_DEVICE:-fenix9pro47mm}"   # PRG for one product; the .iq has every product in manifest.xml (D-36)
 while [ $# -gt 0 ]; do
   case "$1" in
     --key) KEY="$2"; shift 2 ;;

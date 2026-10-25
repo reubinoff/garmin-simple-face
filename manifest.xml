@@ -1,8 +1,45 @@
 <?xml version="1.0"?>
 <iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
-    <iq:application id="9399663f-6b22-455f-82d9-4c1ff991f0f2" type="watchface" version="1.0.0" name="@Strings.AppName" entry="NoirTimeApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="5.0.0">
+    <iq:application id="9399663f-6b22-455f-82d9-4c1ff991f0f2" type="watchface" version="1.0.0" name="@Strings.AppName" entry="NoirTimeApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="3.1.0">
         <iq:products>
+            <iq:product id="fenix843mm"/>
+            <iq:product id="fenix847mm"/>
+            <iq:product id="fenix8pro47mm"/>
+            <iq:product id="fenix8solar47mm"/>
+            <iq:product id="fenix8solar51mm"/>
+            <iq:product id="fenix943mm"/>
+            <iq:product id="fenix947mm"/>
+            <iq:product id="fenix9pro43mm"/>
             <iq:product id="fenix9pro47mm"/>
+            <iq:product id="fenix9pro51mm"/>
+            <iq:product id="fenix9prosolar47mm"/>
+            <iq:product id="fenix9prosolar51mm"/>
+            <iq:product id="fenixe"/>
+            <iq:product id="fr165"/>
+            <iq:product id="fr165m"/>
+            <iq:product id="fr170"/>
+            <iq:product id="fr170m"/>
+            <iq:product id="fr245"/>
+            <iq:product id="fr245m"/>
+            <iq:product id="fr255"/>
+            <iq:product id="fr255m"/>
+            <iq:product id="fr255s"/>
+            <iq:product id="fr255sm"/>
+            <iq:product id="fr265"/>
+            <iq:product id="fr265s"/>
+            <iq:product id="fr55"/>
+            <iq:product id="fr57042mm"/>
+            <iq:product id="fr57047mm"/>
+            <iq:product id="fr645"/>
+            <iq:product id="fr645m"/>
+            <iq:product id="fr70"/>
+            <iq:product id="fr745"/>
+            <iq:product id="fr935"/>
+            <iq:product id="fr945"/>
+            <iq:product id="fr945lte"/>
+            <iq:product id="fr955"/>
+            <iq:product id="fr965"/>
+            <iq:product id="fr970"/>
         </iq:products>
         <!-- SensorHistory: needed by Toybox.SensorHistory.getBodyBatteryHistory (Body Battery), DECISIONS.md D-27.
              ActivityMonitor, Time, System, Graphics and Application.Properties need no permission (D-06). -->

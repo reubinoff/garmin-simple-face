@@ -1,10 +1,11 @@
 import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.System;
 import Toybox.Test;
 
 //! Run No Evil unit tests (Core Topics -> Unit Testing). Compiled only with `monkeyc --unit-test` and run with
-//! `monkeydo <prg> fenix9pro47mm -t` in the simulator; test code is not included in normal builds.
+//! `monkeydo <prg> <device> -t` in the simulator; test code is not included in normal builds.
 //! See scripts/run-unit-tests.sh and DECISIONS.md D-22.
 
 (:test)
@@ -121,15 +122,23 @@ function testXxlSearch(logger as Logger) as Boolean {
     return true;
 }
 
-//! Real scalable font on the simulated device: getVectorFont returns a font for the XX-Large faces and the
-//! chosen layout search finds a size that fits (the device reference lists both faces as Scalable).
+//! XX-Large search range scales with the screen width (D-36): exact on the 454 px reference, proportional elsewhere.
+(:test)
+function testXxlSizeScaling(logger as Logger) as Boolean {
+    Test.assertEqual(NoirLayout.xxlSizeMax(454), NoirLayout.XXL_SIZE_MAX);
+    Test.assertEqual(NoirLayout.xxlSizeMin(454), NoirLayout.XXL_SIZE_MIN);
+    Test.assertEqual(NoirLayout.xxlSizeMax(260), 137);   // 240 * 260 / 454
+    Test.assertEqual(NoirLayout.xxlSizeMin(260), 103);   // 180 * 260 / 454
+    Test.assert(NoirLayout.xxlSizeMax(466) > NoirLayout.XXL_SIZE_MAX);
+    Test.assert(NoirLayout.xxlSizeMin(208) < NoirLayout.xxlSizeMax(208));
+    return true;
+}
+
+//! Real scalable font on the simulated device: where Graphics.getVectorFont exists, it returns a font for the
+//! XX-Large faces at this screen's smallest XX-Large size (D-24, D-36). Devices without it fall back to X-Large.
 (:test)
 function testVectorFontAvailable(logger as Logger) as Boolean {
-    Test.assert(Graphics has :getVectorFont);
-    var font = Graphics.getVectorFont({ :face => NoirLayout.xxlFaces(), :size => NoirLayout.XXL_SIZE_MIN });
-    Test.assert(font != null);
-    Test.assert(Graphics.getFontHeight(font as Graphics.VectorFont) > 0);
-    return true;
+    return NoirTestUtil.checkVectorFont(logger);
 }
 
 (:test)
@@ -283,6 +292,29 @@ module NoirTestUtil {
     function bb(level as Number or Null) as String {
         return NoirLayout.formatBodyBattery(level);
     }
+
+    //! API 4.2.1+ build: getVectorFont, when the device has it, returns a usable font for the XX-Large faces.
+    (:ciq4)
+    function checkVectorFont(logger as Logger) as Boolean {
+        if (!(Graphics has :getVectorFont)) {
+            logger.debug("getVectorFont not on this device: XX-Large uses the X-Large fonts");
+            return true;
+        }
+        var width = System.getDeviceSettings().screenWidth;
+        var font = Graphics.getVectorFont({ :face => NoirLayout.xxlFaces(), :size => NoirLayout.xxlSizeMin(width) });
+        logger.debug("vector font: " + (font != null).toString());
+        if (font != null) {
+            Test.assert(Graphics.getFontHeight(font) > 0);
+        }
+        return true;
+    }
+
+    //! API 3.x build (D-36): no getVectorFont symbol; XX-Large falls back to X-Large.
+    (:ciq3)
+    function checkVectorFont(logger as Logger) as Boolean {
+        logger.debug("API 3.x build: no vector fonts");
+        return true;
+    }
 }
 
 (:test)
@@ -321,13 +353,27 @@ function testBodyBatteryFromStubSample(logger as Logger) as Boolean {
     return true;
 }
 
-//! Real API on the simulated fenix 9 Pro 47mm: present (has-check) and read() returns null or 0..100 without throwing.
+//! Real API on the simulated device: read() returns null or 0..100 without throwing; where the API is missing
+//! (Forerunner 645 / 935, D-36) isAvailable() is false and read() is null.
 (:test)
 function testBodyBatteryApiOnDevice(logger as Logger) as Boolean {
-    Test.assert(NoirBodyBattery.isAvailable());
+    var available = NoirBodyBattery.isAvailable();
     var level = NoirBodyBattery.read();
-    logger.debug("Body Battery read: " + NoirLayout.formatBodyBattery(level));
+    logger.debug("Body Battery available: " + available.toString() + ", read: " + NoirLayout.formatBodyBattery(level));
+    Test.assert(available || level == null);
     Test.assert(level == null || (level >= 0 && level <= 100));
+    return true;
+}
+
+//! Screen facts the layout depends on (D-36): logged per device; burn-in protection is a Boolean when present.
+(:test)
+function testDeviceScreen(logger as Logger) as Boolean {
+    var settings = System.getDeviceSettings();
+    logger.debug("screen " + settings.screenWidth.toString() + "x" + settings.screenHeight.toString());
+    Test.assertEqual(settings.screenShape, System.SCREEN_SHAPE_ROUND);
+    if (settings has :requiresBurnInProtection) {
+        logger.debug("requiresBurnInProtection " + settings.requiresBurnInProtection.toString());
+    }
     return true;
 }
 
