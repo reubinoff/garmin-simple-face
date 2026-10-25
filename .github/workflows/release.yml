@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Store version (must equal the version attribute in manifest.xml; max 20 characters)'
+        description: 'Store version, e.g. 1.0.1 (max 20 chars). It is written into manifest.xml automatically.'
         required: true
         type: string
       whats_new:
@@ -43,23 +43,25 @@ jobs:
           done
           exit $missing
 
-      - name: Version input equals manifest.xml
+      - name: Set the version in manifest.xml from the input
         run: |
-          manifest_version=$(python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          ns = {"iq": "http://www.garmin.com/xml/connectiq"}
-          app = ET.parse("manifest.xml").getroot().find("iq:application", ns)
-          print(app.get("version", ""))
-          PY
-          )
+          if [ -z "$INPUT_VERSION" ]; then echo "::error::Version input is empty"; exit 1; fi
           if [ "${#INPUT_VERSION}" -gt 20 ]; then
             echo "::error::Version '$INPUT_VERSION' is longer than 20 characters"; exit 1
           fi
-          if [ "$manifest_version" != "$INPUT_VERSION" ]; then
-            echo "::error::Version mismatch: input '$INPUT_VERSION', manifest.xml '$manifest_version'. Update the version attribute of <iq:application> in manifest.xml or rerun with the manifest version."
-            exit 1
-          fi
-          echo "Version $INPUT_VERSION matches manifest.xml"
+          # Write the chosen version into <iq:application version="..."> so the package always matches the input.
+          python3 - "$INPUT_VERSION" <<'PY'
+          import sys, re
+          version = sys.argv[1]
+          with open("manifest.xml", encoding="utf-8") as f:
+              s = f.read()
+          new, n = re.subn(r'(<iq:application\b[^>]*?\bversion=")[^"]*(")', r'\g<1>%s\g<2>' % version, s, count=1)
+          if n != 1:
+              sys.exit("could not find the version attribute on <iq:application> in manifest.xml")
+          with open("manifest.xml", "w", encoding="utf-8") as f:
+              f.write(new)
+          print("manifest.xml version set to", version)
+          PY
 
       # The Connect IQ docs require Java 11 or higher; the SDK was run with Temurin 21 when this project was created.
       - uses: actions/setup-java@v6

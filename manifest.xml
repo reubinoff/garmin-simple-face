@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
-    <iq:application id="9399663f-6b22-455f-82d9-4c1ff991f0f2" type="watchface" version="1.0.0" name="@Strings.AppName" entry="NoirTimeApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="3.1.0">
+    <iq:application id="9399663f-6b22-455f-82d9-4c1ff991f0f2" type="watchface" version="1.0.1" name="@Strings.AppName" entry="NoirTimeApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="3.1.0">
         <iq:products>
             <iq:product id="fenix843mm"/>
             <iq:product id="fenix847mm"/>
