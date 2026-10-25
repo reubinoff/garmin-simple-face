@@ -1,14 +1,15 @@
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.System;
 
 //! Pure layout / formatting / always-on helpers. No Dc and no system calls, so every function here is
 //! covered by the Run No Evil unit tests (source/tests/NoirTests.mc) and mirrored by the host-side
 //! Python model (tests/host/face_model.py). DECISIONS.md D-17, D-19, D-20.
 module NoirLayout {
 
-    // Neutral grey of date / steps (and of the colon when hour and minute colours differ).
+    // Neutral grey of the date / fields (and of the colon when hour and minute colours differ).
     const COLOR_TEXT = 0xB0B0B0;
-    // Date / steps in always-on mode: same font, dimmer grey.
+    // Date / fields in always-on mode: same font, dimmer grey.
     const COLOR_TEXT_AOD = 0x6E6E6E;
     // Vertical gap between the rows, percent of the screen height.
     const ROW_SPACING_PERCENT = 3;
@@ -22,83 +23,131 @@ module NoirLayout {
     const AOD_MASK_PERIOD = 3;
     // Room kept free at the round edge; must cover AOD_SHIFT_PIXELS + OUTLINE_MAX (unit-tested).
     const EDGE_MARGIN = 12;
-    // Representative widest texts used for the fit check.
-    const SAMPLE_DATE = "Wed 30 Sep";
-    const SAMPLE_STEPS = "100,000";
-    const SAMPLE_BODY_BATTERY = "100";
-    // Stats row icons (DECISIONS.md D-28): icon height = ICON_HEIGHT_PERCENT of the row font height; widths are
-    // percent of the icon height; gaps are percent of the row font height.
+    // Representative widest date text used for the fit check (field samples: NoirFields.sampleText).
+    const SAMPLE_DATE = "WED 30 SEP";
+    // Field icons (DECISIONS.md D-28, D-39): icon height = ICON_HEIGHT_PERCENT of the row font height; gaps are
+    // percent of the row font height. Icon widths: iconWidthPercent().
     const ICON_HEIGHT_PERCENT = 60;
-    const STEPS_ICON_WIDTH_PERCENT = 84;
-    const BODY_BATTERY_ICON_WIDTH_PERCENT = 100;
     const ICON_GAP_PERCENT = 12;
     const GROUP_GAP_PERCENT = 40;
     // The 8 neighbour directions used to draw an outline (dilation) of a text.
     const OUTLINE_DX = [-1, 0, 1, -1, 1, -1, 0, 1] as Array<Number>;
     const OUTLINE_DY = [-1, -1, -1, 0, 0, 1, 1, 1] as Array<Number>;
 
-    //! Vertical half extent of the digits around the TEXT_JUSTIFY_VCENTER line, percent of Dc.getFontHeight().
-    //! Measured from the device font files (simulator.json: number fonts = Bionic_Medium.ttf; scalable face
-    //! RobotoCondensedRegular = RobotoCondensed-Regular.ttf): digit top 27.5 % / 32.3 % above the centre line,
-    //! rounded up. Used only by the fit check (DECISIONS.md D-24).
-    const DIGIT_HALF_PERCENT_NUMBER = 28;
-    const DIGIT_HALF_PERCENT_CONDENSED = 33;
-    // XX-Large: scalable (vector) fonts, Graphics.getVectorFont (API 4.2.1; fenix 9 Pro 47mm lists
-    // "RobotoCondensedRegular" and "BionicMedium" as Scalable fonts in the device reference). Requested pixel sizes
-    // are tried from XXL_SIZE_MAX down in XXL_SIZE_STEP steps; the first that fits is used (D-24).
-    const XXL_SIZE_MAX = 240;
-    const XXL_SIZE_MIN = 180;
-    const XXL_SIZE_STEP = 4;
-    // XXL_SIZE_MAX / XXL_SIZE_MIN are for the 454 px reference screen; other screens scale them (D-36).
-    const REFERENCE_SCREEN = 454;
+    // Time digits (D-38): Bebas Neue bitmap fonts Rez.Fonts.TimeFont0..4 (Small..XX-Large), generated per screen
+    // resolution by scripts/make_fonts.py. Each font's line height = digit height + TIME_LINE_EXTRA (the digits fill
+    // the line, 1 px free above and below). The colon is drawn as two squares (Bebas Neue's own colon sits at x-height):
+    // gap between hour and minute = COLON_GAP_PERCENT of the digit height, square side COLON_DOT_PERCENT (about the
+    // stroke width), dot centres COLON_OFFSET_PERCENT above / below the centre line. KEEP COLON_GAP_PERCENT,
+    // EDGE_MARGIN and OUTLINE_MAX IN SYNC with scripts/make_fonts.py (checked by tests/host/test_resources.py).
+    const TIME_LINE_EXTRA = 2;
+    const COLON_GAP_PERCENT = 27;
+    const COLON_DOT_PERCENT = 15;
+    const COLON_OFFSET_PERCENT = 22;
 
-    //! Largest / smallest XX-Large pixel size tried on a screen screenWidth px wide (proportional to REFERENCE_SCREEN).
-    function xxlSizeMax(screenWidth as Number) as Number {
-        return XXL_SIZE_MAX * screenWidth / REFERENCE_SCREEN;
+    // Companion text font (D-40): the scalable RobotoCondensedRegular (Graphics.getVectorFont, API 4.2.1) for the date
+    // and the fields, sized in percent of the screen width; system fonts where it is missing (API 3.x, Forerunner 255
+    // family) and, for the date, in languages whose script it may not cover.
+    const DATE_SIZE_PERCENT = 10;
+    const ROW_SIZE_PERCENTS = [10, 9, 8, 7] as Array<Number>;
+
+    //! Time font resources, Small..XX-Large.
+    function timeFontIds() as Array<ResourceId> {
+        return [Rez.Fonts.TimeFont0, Rez.Fonts.TimeFont1, Rez.Fonts.TimeFont2, Rez.Fonts.TimeFont3,
+                Rez.Fonts.TimeFont4] as Array<ResourceId>;
     }
 
-    function xxlSizeMin(screenWidth as Number) as Number {
-        return XXL_SIZE_MIN * screenWidth / REFERENCE_SCREEN;
-    }
-
-    //! Scalable faces for XX-Large, preferred first (getVectorFont takes an Array of acceptable faces).
-    function xxlFaces() as Array<String> {
-        return ["RobotoCondensedRegular", "BionicMedium"] as Array<String>;
-    }
-
-    //! System (bitmap) time font candidates per size, largest first; the first one that fits is used in BOTH
-    //! power modes, so the layout never changes between active and always-on mode. XX-Large uses a scalable
-    //! font (NoirTimeView.updateLayout) and falls back to the X-Large list when none fits / none is available.
-    function fontCandidates(size as Number) as Array<Graphics.FontType> {
-        if (size == NoirSettings.SIZE_SMALL) {
-            return [Graphics.FONT_NUMBER_MILD, Graphics.FONT_LARGE] as Array<Graphics.FontType>;
+    //! Time font indexes to try for a size setting, largest first: the selected size, then every smaller one.
+    //! The first that fits is used in BOTH power modes, so the layout never changes between active and always-on.
+    function timeFontOrder(size as Number) as Array<Number> {
+        var order = [] as Array<Number>;
+        for (var i = size; i >= 0; i--) {
+            order.add(i);
         }
-        if (size == NoirSettings.SIZE_LARGE) {
-            return [Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
-        }
-        if (size == NoirSettings.SIZE_XLARGE || size == NoirSettings.SIZE_XXLARGE) {
-            return [Graphics.FONT_NUMBER_THAI_HOT, Graphics.FONT_NUMBER_HOT, Graphics.FONT_NUMBER_MEDIUM,
-                    Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
-        }
-        return [Graphics.FONT_NUMBER_MEDIUM, Graphics.FONT_NUMBER_MILD] as Array<Graphics.FontType>;
+        return order;
     }
 
-    //! Stats row (steps / Body Battery) font candidates, largest first: the largest that fits next to the chosen
-    //! time font is used (D-28). FONT_SMALL is the font steps always had, so with Body Battery hidden nothing changes.
-    function statsFontCandidates() as Array<Graphics.FontType> {
+    function digitHeight(lineHeight as Number) as Number {
+        return lineHeight - TIME_LINE_EXTRA;
+    }
+
+    function colonGap(digitH as Number) as Number {
+        return digitH * COLON_GAP_PERCENT / 100;
+    }
+
+    function colonDot(digitH as Number) as Number {
+        var side = digitH * COLON_DOT_PERCENT / 100;
+        return side < 3 ? 3 : side;
+    }
+
+    function colonOffset(digitH as Number) as Number {
+        return digitH * COLON_OFFSET_PERCENT / 100;
+    }
+
+    //! Width of "HH:MM": two digit pairs plus the colon gap.
+    function timeWidth(pairWidth as Number, digitH as Number) as Number {
+        return pairWidth * 2 + colonGap(digitH);
+    }
+
+    //! Scalable faces for the companion font, preferred first (getVectorFont takes an Array of acceptable faces).
+    function textFaces() as Array<String> {
+        return ["RobotoCondensedRegular"] as Array<String>;
+    }
+
+    function dateVectorSize(screenWidth as Number) as Number {
+        return screenWidth * DATE_SIZE_PERCENT / 100;
+    }
+
+    //! Row font sizes to try, largest first (the largest that fits is used).
+    function rowVectorSizes(screenWidth as Number) as Array<Number> {
+        var sizes = [] as Array<Number>;
+        for (var i = 0; i < ROW_SIZE_PERCENTS.size(); i++) {
+            sizes.add(screenWidth * ROW_SIZE_PERCENTS[i] / 100);
+        }
+        return sizes;
+    }
+
+    //! System font fallback for the field rows, largest first.
+    function rowSystemFonts() as Array<Graphics.FontType> {
         return [Graphics.FONT_SMALL, Graphics.FONT_TINY, Graphics.FONT_XTINY] as Array<Graphics.FontType>;
+    }
+
+    //! Languages whose day / month names are plain Latin script, which RobotoCondensed certainly covers. Every other
+    //! language (Hebrew, Cyrillic, Greek, CJK, Thai, Arabic, Latin with rarer diacritics ...) keeps the system font for
+    //! the date, which is made for the watch's languages (D-40). The fields are digits only and always use it.
+    function isBasicLatin(language as Number) as Boolean {
+        return language == System.LANGUAGE_ENG || language == System.LANGUAGE_DEU || language == System.LANGUAGE_FRE
+            || language == System.LANGUAGE_ITA || language == System.LANGUAGE_SPA || language == System.LANGUAGE_POR
+            || language == System.LANGUAGE_DUT || language == System.LANGUAGE_DAN || language == System.LANGUAGE_SWE
+            || language == System.LANGUAGE_NOB || language == System.LANGUAGE_FIN;
     }
 
     function iconHeight(fontHeight as Number) as Number {
         return fontHeight * ICON_HEIGHT_PERCENT / 100;
     }
 
-    function stepsIconWidth(fontHeight as Number) as Number {
-        return iconHeight(fontHeight) * STEPS_ICON_WIDTH_PERCENT / 100;
+    //! Icon width per field, percent of the icon height.
+    function iconWidthPercent(field as Number) as Number {
+        if (field == NoirFields.STEPS) {
+            return 84;
+        }
+        if (field == NoirFields.HEART_RATE || field == NoirFields.NOTIFICATIONS || field == NoirFields.STRESS) {
+            return 110;
+        }
+        if (field == NoirFields.BATTERY || field == NoirFields.BATTERY_DAYS) {
+            return 150;
+        }
+        if (field == NoirFields.CALORIES || field == NoirFields.INTENSITY || field == NoirFields.DISTANCE) {
+            return 70;
+        }
+        if (field == NoirFields.TEMPERATURE) {
+            return 50;
+        }
+        return 100;   // Body Battery, floors
     }
 
-    function bodyBatteryIconWidth(fontHeight as Number) as Number {
-        return iconHeight(fontHeight) * BODY_BATTERY_ICON_WIDTH_PERCENT / 100;
+    function iconWidth(field as Number, fontHeight as Number) as Number {
+        return iconHeight(fontHeight) * iconWidthPercent(field) / 100;
     }
 
     function iconGap(fontHeight as Number) as Number {
@@ -109,26 +158,25 @@ module NoirLayout {
         return fontHeight * GROUP_GAP_PERCENT / 100;
     }
 
-    //! Width of the stats row "[steps icon] steps   [battery icon] value" for the given text widths; hidden groups
-    //! take no space. 0 when both are hidden.
-    function statsRowWidth(fontHeight as Number, showSteps as Boolean, stepsWidth as Number, showBodyBattery as Boolean,
-            bodyBatteryWidth as Number) as Number {
-        var width = 0;
-        if (showSteps) {
-            width += stepsIconWidth(fontHeight) + iconGap(fontHeight) + stepsWidth;
+    //! Width of one field "[icon] text"; 0 for NONE.
+    function fieldWidth(field as Number, fontHeight as Number, textWidth as Number) as Number {
+        if (field == NoirFields.NONE) {
+            return 0;
         }
-        if (showBodyBattery) {
-            if (showSteps) {
-                width += groupGap(fontHeight);
-            }
-            width += bodyBatteryIconWidth(fontHeight) + iconGap(fontHeight) + bodyBatteryWidth;
-        }
-        return width;
+        return iconWidth(field, fontHeight) + iconGap(fontHeight) + textWidth;
     }
 
-    //! Body Battery sample (SensorSample.data: Number, Float or null, documented range 0..100) -> Number 0..100 or
-    //! null when there is no usable value (D-27).
-    function parseBodyBattery(value as Number or Float or Null) as Number or Null {
+    //! Width of a row of two fields (either may be 0 = empty): with the group gap between them only when both show.
+    function rowWidth(fontHeight as Number, leftWidth as Number, rightWidth as Number) as Number {
+        if (leftWidth > 0 && rightWidth > 0) {
+            return leftWidth + groupGap(fontHeight) + rightWidth;
+        }
+        return leftWidth + rightWidth;
+    }
+
+    //! Field sample (SensorSample.data: Number, Float or null; Body Battery and stress, documented range 0..100) ->
+    //! Number 0..100 or null when there is no usable value (D-27; negative stress = not measurable).
+    function parseLevel(value as Number or Float or Null) as Number or Null {
         if (value == null) {
             return null;
         }
@@ -139,35 +187,13 @@ module NoirLayout {
         return level;
     }
 
-    function formatBodyBattery(level as Number or Null) as String {
-        return level == null ? "--" : level.toString();
-    }
-
-    //! Half height of the digit glyphs for a font of the given height (fit check only).
-    function digitHalfHeight(fontHeight as Number, percent as Number) as Number {
-        return (fontHeight * percent + 99) / 100;
-    }
-
     function rowSpacing(screenHeight as Number) as Number {
         return screenHeight * ROW_SPACING_PERCENT / 100;
     }
 
-    function colonRadius(fontHeight as Number) as Number {
-        var radius = fontHeight / 26;
-        return radius < 3 ? 3 : radius;
-    }
-
-    function colonGap(fontHeight as Number) as Number {
-        return colonRadius(fontHeight) * 6;
-    }
-
-    function colonDotOffset(fontHeight as Number) as Number {
-        return fontHeight * 14 / 100;
-    }
-
-    //! Outline stroke width for a time font: fontHeight / 64, clamped to OUTLINE_MIN..OUTLINE_MAX.
-    function outlineWidth(fontHeight as Number) as Number {
-        var width = fontHeight / 64;
+    //! Outline stroke width for a time font: lineHeight / 64, clamped to OUTLINE_MIN..OUTLINE_MAX.
+    function outlineWidth(lineHeight as Number) as Number {
+        var width = lineHeight / 64;
         if (width < OUTLINE_MIN) {
             return OUTLINE_MIN;
         }
@@ -180,21 +206,30 @@ module NoirLayout {
         return halfWidth * halfWidth + dy * dy <= radius * radius;
     }
 
-    //! Whole block (date / time / stats) fit check for a round screen of width screenSize.
-    //! timeHeight = Dc.getFontHeight of the time font (row stacking), digitHalf = half height of the digit glyphs
-    //! (digitHalfHeight), digitsWidth = width of "00" in the time font; pad = extra pixels around the time (outline).
-    //! dateHeight / dateWidth: the date row above; statsHeight / statsWidth: the steps + Body Battery row below
-    //! (statsWidth 0 = row hidden). Rows are stacked with spacing on the full font height, so they cannot overlap;
-    //! the outer corners of the digit box and of both rows must stay inside the circle of radius screenSize/2 - EDGE_MARGIN.
-    function blockFits(screenSize as Number, timeHeight as Number, digitHalf as Number, digitsWidth as Number,
-            dateHeight as Number, dateWidth as Number, statsHeight as Number, statsWidth as Number, pad as Number) as Boolean {
+    //! How far the whole block moves up when a second field row is shown, so date / time / rows stay centred.
+    function blockShift(secondRow as Boolean, rowHeight as Number, spacing as Number) as Number {
+        return secondRow ? (rowHeight + spacing) / 2 : 0;
+    }
+
+    //! Whole block fit check for a round screen of width screenSize (D-24, D-39):
+    //!            date            dateHeight x dateWidth, `spacing` above the time line
+    //!           HH:MM            timeLine high (digits fill it), timeWidth wide, `pad` around it (outline)
+    //!       [i] 8,432  [i] 76    row 1: rowHeight x row1Width (0 = no row), `spacing` below the time line
+    //!          [i] 62            row 2: rowHeight x row2Width (0 = no row), `spacing` below row 1
+    //! The block is moved up by blockShift(). The outer corners of every element must stay inside the circle of radius
+    //! screenSize/2 - EDGE_MARGIN. Rows are stacked on full font heights, so nothing can overlap.
+    function blockFits(screenSize as Number, timeLine as Number, timeWidth as Number, pad as Number,
+            dateHeight as Number, dateWidth as Number, rowHeight as Number, row1Width as Number,
+            row2Width as Number) as Boolean {
         var radius = screenSize / 2 - EDGE_MARGIN;
         var spacing = rowSpacing(screenSize);
-        var timeHalfWidth = (digitsWidth * 2 + colonGap(timeHeight)) / 2 + pad;
-        var timeHalfHeight = digitHalf + pad;
-        return insideCircle(radius, timeHalfWidth, timeHalfHeight)
-            && insideCircle(radius, dateWidth / 2, timeHeight / 2 + spacing + dateHeight)
-            && (statsWidth <= 0 || insideCircle(radius, statsWidth / 2, timeHeight / 2 + spacing + statsHeight));
+        var shift = blockShift(row2Width > 0, rowHeight, spacing);
+        var half = timeLine / 2;
+        var row1Bottom = half + spacing + rowHeight - shift;
+        return insideCircle(radius, timeWidth / 2 + pad, half + pad + shift)
+            && insideCircle(radius, dateWidth / 2, shift + half + spacing + dateHeight)
+            && (row1Width <= 0 || insideCircle(radius, row1Width / 2, row1Bottom))
+            && (row2Width <= 0 || insideCircle(radius, row2Width / 2, row1Bottom + spacing + rowHeight));
     }
 
     //! Always-on shift for a given minute: a 4-step square cycle (-,-) (+,-) (+,+) (-,+) times AOD_SHIFT_PIXELS.
@@ -229,22 +264,5 @@ module NoirLayout {
         }
         var h = hour % 12;
         return (h == 0 ? 12 : h).toString();
-    }
-
-    //! Steps with a thousands separator; "--" when the device reports none (null).
-    function formatSteps(steps as Number or Null) as String {
-        if (steps == null) {
-            return "--";
-        }
-        var digits = steps.toString();
-        var length = digits.length();
-        var result = "";
-        for (var i = 0; i < length; i++) {
-            if (i > 0 && (length - i) % 3 == 0) {
-                result += ",";
-            }
-            result += (digits.substring(i, i + 1) as String);
-        }
-        return result;
     }
 }

@@ -6,17 +6,21 @@ project.typecheck = strict
 
 # Annotations: (:ciq4) code uses API 4+/5+ symbols (Graphics.getVectorFont 4.2.1, System.getDisplayMode 5.0.0);
 # (:ciq3) is its fallback for API 3.x devices, where the compiler rejects those symbols even behind `has`.
-# (:bodybattery) uses SensorHistory.getBodyBatteryHistory (3.3.0); (:nobodybattery) is the fallback for API 3.1/3.2.
-base.excludeAnnotations = ciq3;nobodybattery
-fr245.excludeAnnotations = ciq4;nobodybattery
-fr245m.excludeAnnotations = ciq4;nobodybattery
-fr745.excludeAnnotations = ciq4;nobodybattery
-fr945.excludeAnnotations = ciq4;nobodybattery
-fr945lte.excludeAnnotations = ciq4;nobodybattery
-fr55.excludeAnnotations = ciq4;nobodybattery
-fr645.excludeAnnotations = ciq4;bodybattery
-fr645m.excludeAnnotations = ciq4;bodybattery
-fr935.excludeAnnotations = ciq4;bodybattery
+# (:hist33) uses SensorHistory.getBodyBatteryHistory / getStressHistory (3.3.0) and Weather (3.2.0); (:nohist33) is the
+# fallback for Forerunner 645 / 645 Music / 935, which none of them lists (D-39).
+# (:floors) uses ActivityMonitor.Info.floorsClimbed; (:nofloors) for Forerunner 245 / 245 Music / 55 / 70, which its
+# Supported Devices list leaves out (no barometer, D-39). Each line names the variants to drop for that product.
+base.excludeAnnotations = ciq3;nohist33;nofloors
+fr245.excludeAnnotations = ciq4;nohist33;floors
+fr245m.excludeAnnotations = ciq4;nohist33;floors
+fr745.excludeAnnotations = ciq4;nohist33;nofloors
+fr945.excludeAnnotations = ciq4;nohist33;nofloors
+fr945lte.excludeAnnotations = ciq4;nohist33;nofloors
+fr55.excludeAnnotations = ciq4;nohist33;floors
+fr645.excludeAnnotations = ciq4;hist33;nofloors
+fr645m.excludeAnnotations = ciq4;hist33;nofloors
+fr935.excludeAnnotations = ciq4;hist33;nofloors
+fr70.excludeAnnotations = ciq3;nohist33;floors
 
 # Launcher icon in each device's own size (compiler.json launcherIcon); resources/ has the 65 x 65 one.
 fenix843mm.resourcePath = $(fenix843mm.resourcePath);launcher-icons/60

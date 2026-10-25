@@ -24,8 +24,20 @@
     <string id="ColorPurple">סגול</string>
     <string id="ColorMagenta">מג'נטה</string>
     <string id="ColorPink">ורוד</string>
-    <string id="ShowStepsTitle">הצג צעדים</string>
-    <string id="ShowBodyBatteryTitle">הצג Body Battery</string>
-    <string id="StateOn">מופעל</string>
-    <string id="StateOff">כבוי</string>
+    <string id="FieldLeftTitle">שדה שמאלי</string>
+    <string id="FieldRightTitle">שדה ימני</string>
+    <string id="FieldBottomTitle">שדה תחתון</string>
+    <string id="FieldNone">ללא</string>
+    <string id="FieldSteps">צעדים</string>
+    <string id="FieldBodyBattery">Body Battery</string>
+    <string id="FieldHeartRate">דופק</string>
+    <string id="FieldBattery">סוללה</string>
+    <string id="FieldBatteryDays">ימי סוללה</string>
+    <string id="FieldCalories">קלוריות</string>
+    <string id="FieldFloors">קומות</string>
+    <string id="FieldIntensity">דקות עצימות</string>
+    <string id="FieldNotifications">התראות</string>
+    <string id="FieldStress">מתח</string>
+    <string id="FieldTemperature">טמפרטורה</string>
+    <string id="FieldDistance">מרחק</string>
 </strings>

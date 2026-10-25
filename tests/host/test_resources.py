@@ -86,8 +86,8 @@ class ResourcesTest(unittest.TestCase):
         self.assertEqual(set(keys.values()), {s.get("propertyKey").split(".")[1] for s in self.settings.iter("setting")})
 
     def test_palette_matches_code(self):
-        code = [int(v, 16) for v in re.search(r"function colorValues\(\).*?\[(.*?)\]", self.mc, re.S).group(1).split(",")]
-        labels = re.findall(r"Rez\.Strings\.(Color\w+)", re.search(r"function colorLabels\(\).*?\];", self.mc, re.S).group(0))
+        code = [int(v, 16) for v in re.search(r"function colorValues\(\).*?\[(.*?)\]", self.mc, re.DOTALL).group(1).split(",")]
+        labels = re.findall(r"Rez\.Strings\.(Color\w+)", re.search(r"function colorLabels\(\).*?\];", self.mc, re.DOTALL).group(0))
         for key in ("HourColor", "MinuteColor"):
             entries = self.setting(key)
             self.assertEqual([v for v, _ in entries], code, key)
@@ -103,29 +103,57 @@ class ResourcesTest(unittest.TestCase):
 
     def test_sizes_match_code(self):
         entries = self.setting("TimeSize")
-        consts = dict((k, int(v)) for k, v in re.findall(r"const (SIZE_\w+) = (\d+);", self.mc))
+        consts = {k: int(v) for k, v in re.findall(r"const (SIZE_\w+) = (\d+);", self.mc)}
         self.assertEqual([v for v, _ in entries], [consts["SIZE_SMALL"], consts["SIZE_MEDIUM"], consts["SIZE_LARGE"],
                                                    consts["SIZE_XLARGE"], consts["SIZE_XXLARGE"]])
-        labels = re.findall(r"Rez\.Strings\.(Size\w+)", re.search(r"function sizeLabels\(\).*?\];", self.mc, re.S).group(0))
+        labels = re.findall(r"Rez\.Strings\.(Size\w+)", re.search(r"function sizeLabels\(\).*?\];", self.mc, re.DOTALL).group(0))
         self.assertEqual([t.replace("@Strings.", "") for _, t in entries], labels)
 
-    def test_show_hide_toggles(self):
-        """ShowSteps / ShowBodyBattery: Boolean properties defaulting to true, boolean settings (D-29)."""
-        for key in ("ShowSteps", "ShowBodyBattery"):
-            self.assertEqual(self.prop_types[key], "boolean", key)
-            self.assertIs(self.props[key], True, key)
-            types = [c.get("type") for s in self.settings.iter("setting") if s.get("propertyKey") == "@Properties." + key
-                     for c in s.iter("settingConfig")]
-            self.assertEqual(types, ["boolean"], key)
-        self.assertIn('const KEY_SHOW_STEPS = "ShowSteps";', self.mc)
-        self.assertIn('const KEY_SHOW_BODY_BATTERY = "ShowBodyBattery";', self.mc)
+    def test_field_slots(self):
+        """FieldLeft / FieldRight / FieldBottom: number properties (defaults steps, Body Battery, none) whose list
+        settings offer every NoirFields id in order with the matching label (D-39)."""
+        fields = read("source", "NoirFields.mc")
+        ids = {k: int(v) for k, v in re.findall(r"const ([A-Z_]+) = (\d+);", fields)}
+        labels = re.findall(r"Rez\.Strings\.(Field\w+)",
+                            re.search(r"function allLabels\(\).*?\];", fields, re.DOTALL).group(0))
+        self.assertEqual(len(labels), ids["COUNT"])
+        for key, default in (("FieldLeft", ids["STEPS"]), ("FieldRight", ids["BODY_BATTERY"]),
+                             ("FieldBottom", ids["NONE"])):
+            self.assertEqual(self.prop_types[key], "number", key)
+            self.assertEqual(self.props[key], default, key)
+            entries = self.setting(key)
+            self.assertEqual([v for v, _ in entries], list(range(ids["COUNT"])), key)
+            self.assertEqual([t.replace("@Strings.", "") for _, t in entries], labels, key)
+        for name in ("NONE", "STEPS", "BODY_BATTERY", "HEART_RATE", "BATTERY", "BATTERY_DAYS", "CALORIES", "FLOORS",
+                     "INTENSITY", "NOTIFICATIONS", "STRESS", "TEMPERATURE", "DISTANCE"):
+            self.assertEqual(labels[ids[name]], "Field" + name.title().replace("_", ""), name)
+        self.assertIn('const KEY_FIELD_LEFT = "FieldLeft";', self.mc)
         menu = read("source", "NoirTimeSettingsMenu.mc")
-        self.assertEqual(menu.count("new WatchUi.ToggleMenuItem("), 2)
+        self.assertNotIn("ToggleMenuItem", menu)
+        self.assertEqual(menu.count("new WatchUi.MenuItem("), 6)
+
+    def test_embedded_time_fonts(self):
+        """Bebas Neue (OFL) digits per round resolution: fonts.xml with TimeFont0..4, files present, licence kept."""
+        self.assertTrue(os.path.exists(os.path.join(ROOT, "assets", "fonts", "BebasNeue", "OFL.txt")))
+        self.assertIn("SIL OPEN FONT LICENSE", read("assets", "fonts", "BebasNeue", "OFL.txt").upper())
+        folders = sorted(glob.glob(os.path.join(ROOT, "resources-round-*x*")))
+        self.assertEqual(len(folders), 10)
+        for folder in folders:
+            root = ET.parse(os.path.join(folder, "fonts", "fonts.xml")).getroot()
+            fonts = [(f.get("id"), f.get("filename"), f.get("filter")) for f in root.iter("font")]
+            self.assertEqual([f[0] for f in fonts], [f"TimeFont{i}" for i in range(5)], folder)
+            for _, name, flt in fonts:
+                self.assertEqual(flt, "0123456789")
+                fnt = os.path.join(folder, "fonts", name)
+                with open(fnt, encoding="ascii") as fh:
+                    page = re.search(r'file="([^"]+)"', fh.read()).group(1)
+                self.assertTrue(os.path.exists(os.path.join(folder, "fonts", page)), page)
+        layout = read("source", "NoirLayout.mc")
+        self.assertEqual(re.findall(r"Rez\.Fonts\.(TimeFont\d)",
+                                    re.search(r"function timeFontIds\(\).*?\]", layout, re.DOTALL).group(0)), [f"TimeFont{i}" for i in range(5)])
 
     def test_defaults_are_list_values(self):
         for key, default in self.props.items():
-            if self.prop_types[key] == "boolean":
-                continue
             self.assertIn(default, [v for v, _ in self.setting(key)], key)
         self.assertEqual(self.props["TimeSize"], 1)  # Medium
         self.assertEqual(self.props["HourColor"], 0xFFFFFF)
@@ -167,6 +195,13 @@ class ResourcesTest(unittest.TestCase):
         # API 3.x devices must take the fallback variants (no getVectorFont / getDisplayMode symbols).
         for dev in ("fr245", "fr245m", "fr745", "fr945", "fr945lte", "fr55", "fr645", "fr645m", "fr935"):
             self.assertRegex(jungle, rf"(?m)^{dev}\.excludeAnnotations = ciq4;")
+        # No SensorHistory body battery / stress (API 3.3.0) on fr645 / fr645m / fr935 (D-39).
+        for dev in ("fr645", "fr645m", "fr935"):
+            self.assertRegex(jungle, rf"(?m)^{dev}\.excludeAnnotations = ciq4;hist33;nofloors$")
+        # No ActivityMonitor.Info.floorsClimbed on fr245 / fr245m / fr55 / fr70 (D-39).
+        for dev in ("fr245", "fr245m", "fr55", "fr70"):
+            self.assertRegex(jungle, rf"(?m)^{dev}\.excludeAnnotations = ciq[34];nohist33;floors$")
+        self.assertRegex(jungle, r"(?m)^base\.excludeAnnotations = ciq3;nohist33;nofloors$")
 
     def test_no_keys_or_secrets_tracked(self):
         for f in glob.glob(os.path.join(ROOT, "**", "*"), recursive=True):
@@ -180,7 +215,7 @@ class ResourcesTest(unittest.TestCase):
         files += glob.glob(os.path.join(ROOT, "launcher-icons", "**", "*.xml"), recursive=True)
         self.assertTrue(files)
         for f in files:
-            self.assertTrue(schema.validate(etree.parse(f)), "%s: %s" % (f, schema.error_log))
+            self.assertTrue(schema.validate(etree.parse(f)), f"{f}: {schema.error_log}")
 
 
 if __name__ == "__main__":

@@ -48,10 +48,55 @@
             <listEntry value="0xFF4FA0">@Strings.ColorPink</listEntry>
         </settingConfig>
     </setting>
-    <setting propertyKey="@Properties.ShowSteps" title="@Strings.ShowStepsTitle">
-        <settingConfig type="boolean"/>
+    <setting propertyKey="@Properties.FieldLeft" title="@Strings.FieldLeftTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.FieldNone</listEntry>
+            <listEntry value="1">@Strings.FieldSteps</listEntry>
+            <listEntry value="2">@Strings.FieldBodyBattery</listEntry>
+            <listEntry value="3">@Strings.FieldHeartRate</listEntry>
+            <listEntry value="4">@Strings.FieldBattery</listEntry>
+            <listEntry value="5">@Strings.FieldBatteryDays</listEntry>
+            <listEntry value="6">@Strings.FieldCalories</listEntry>
+            <listEntry value="7">@Strings.FieldFloors</listEntry>
+            <listEntry value="8">@Strings.FieldIntensity</listEntry>
+            <listEntry value="9">@Strings.FieldNotifications</listEntry>
+            <listEntry value="10">@Strings.FieldStress</listEntry>
+            <listEntry value="11">@Strings.FieldTemperature</listEntry>
+            <listEntry value="12">@Strings.FieldDistance</listEntry>
+        </settingConfig>
     </setting>
-    <setting propertyKey="@Properties.ShowBodyBattery" title="@Strings.ShowBodyBatteryTitle">
-        <settingConfig type="boolean"/>
+    <setting propertyKey="@Properties.FieldRight" title="@Strings.FieldRightTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.FieldNone</listEntry>
+            <listEntry value="1">@Strings.FieldSteps</listEntry>
+            <listEntry value="2">@Strings.FieldBodyBattery</listEntry>
+            <listEntry value="3">@Strings.FieldHeartRate</listEntry>
+            <listEntry value="4">@Strings.FieldBattery</listEntry>
+            <listEntry value="5">@Strings.FieldBatteryDays</listEntry>
+            <listEntry value="6">@Strings.FieldCalories</listEntry>
+            <listEntry value="7">@Strings.FieldFloors</listEntry>
+            <listEntry value="8">@Strings.FieldIntensity</listEntry>
+            <listEntry value="9">@Strings.FieldNotifications</listEntry>
+            <listEntry value="10">@Strings.FieldStress</listEntry>
+            <listEntry value="11">@Strings.FieldTemperature</listEntry>
+            <listEntry value="12">@Strings.FieldDistance</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.FieldBottom" title="@Strings.FieldBottomTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.FieldNone</listEntry>
+            <listEntry value="1">@Strings.FieldSteps</listEntry>
+            <listEntry value="2">@Strings.FieldBodyBattery</listEntry>
+            <listEntry value="3">@Strings.FieldHeartRate</listEntry>
+            <listEntry value="4">@Strings.FieldBattery</listEntry>
+            <listEntry value="5">@Strings.FieldBatteryDays</listEntry>
+            <listEntry value="6">@Strings.FieldCalories</listEntry>
+            <listEntry value="7">@Strings.FieldFloors</listEntry>
+            <listEntry value="8">@Strings.FieldIntensity</listEntry>
+            <listEntry value="9">@Strings.FieldNotifications</listEntry>
+            <listEntry value="10">@Strings.FieldStress</listEntry>
+            <listEntry value="11">@Strings.FieldTemperature</listEntry>
+            <listEntry value="12">@Strings.FieldDistance</listEntry>
+        </settingConfig>
     </setting>
 </settings>

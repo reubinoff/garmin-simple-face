@@ -3,10 +3,9 @@ import glob
 import os
 import unittest
 
+import face_model as m
 import numpy as np
 from PIL import Image
-
-import face_model as m
 
 SHOTS = os.path.join(m.ROOT, "docs", "screenshots")
 
@@ -37,8 +36,8 @@ def time_block_height(img):
 class RealScreenshotTests(unittest.TestCase):
     def test_present(self):
         for size in ("small", "medium", "large", "xlarge", "xxlarge"):
-            self.assertTrue(glob.glob(os.path.join(SHOTS, "active_%s_*.png" % size)), size)
-            self.assertTrue(glob.glob(os.path.join(SHOTS, "aod_%s_*.png" % size)), size)
+            self.assertTrue(glob.glob(os.path.join(SHOTS, f"active_{size}_*.png")), size)
+            self.assertTrue(glob.glob(os.path.join(SHOTS, f"aod_{size}_*.png")), size)
 
     def test_aod_within_amoled_limits(self):
         for path in glob.glob(os.path.join(SHOTS, "aod_*.png")):
@@ -64,16 +63,25 @@ class RealScreenshotTests(unittest.TestCase):
             self.assertLessEqual(abs(heights[0] - heights[1]), 2 * 4 + 2, (name, heights))  # outline pad + shift
 
     def test_hidden_fields(self):
-        """Toggles: hiding a field lights fewer pixels and never changes the time size (D-28, D-29)."""
-        pairs = [("large_white-white_no-bodybattery", "large_white-white"),
-                 ("medium_white-orange_no-steps", "medium_white-orange"),
-                 ("xlarge_white-cyan_no-stats", "xlarge_white-cyan")]
+        """Fewer fields light fewer pixels and never change the time size (D-39)."""
+        pairs = [("large_white-white_no-fields", "large_white-white"),
+                 ("medium_white-orange_steps-only", "medium_white-orange")]
         for hidden, full in pairs:
             for mode in ("active_", "aod_"):
                 h, f = load(mode + hidden + ".png"), load(mode + full + ".png")
                 self.assertLess((h.max(axis=2) > 0).sum(), (f.max(axis=2) > 0).sum(), mode + hidden)
                 self.assertLessEqual(abs(time_block_height(h) - time_block_height(f)), 2 * 4 + 2, mode + hidden)
 
+    def test_sizes_grow(self):
+        """Each size setting shows bigger digits than the previous one (one field row, white digits)."""
+        names = ["small_white-cyan", "medium_white-white", "large_white-white", "xlarge_white-cyan",
+                 "xxlarge_white-white"]
+        heights = [time_block_height(load("active_" + n + ".png")) for n in names]
+        self.assertEqual(heights, sorted(set(heights)), heights)
+
+    def test_small_files(self):
+        for path in glob.glob(os.path.join(SHOTS, "**", "*.png"), recursive=True):
+            self.assertLess(os.path.getsize(path), 80 * 1024, path)
 
 if __name__ == "__main__":
     unittest.main()

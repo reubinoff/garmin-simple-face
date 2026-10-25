@@ -1,4 +1,3 @@
-import Toybox.ActivityMonitor;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
@@ -6,19 +5,19 @@ import Toybox.Time;
 import Toybox.Time.Gregorian;
 import Toybox.WatchUi;
 
-//! Black watch face that shows only the date, the time, today's steps and Body Battery.
+//! Black watch face: the date, the time in Bebas Neue and up to three user-selected data fields.
 //!
-//!            Fri 23 Oct          <- date, grey
-//!              12:34             <- hours / minutes in two user-selected colours
-//!        [feet] 8,432  [bat] 76  <- steps / Body Battery with small vector icons, grey; each can be hidden
+//!            WED 23 OCT           <- date, grey (RobotoCondensed where available)
+//!              12:34              <- hours / minutes in two user-selected colours (Bebas Neue bitmap font, D-38)
+//!        [feet] 8,432  [bb] 76    <- left / right field slots, grey, small vector icons (D-39)
+//!             [heart] 62          <- bottom slot (the block moves up so it stays centred)
 //!
-//! Active mode: filled digits. Always-on mode (DECISIONS.md D-19): exactly the same fonts and layout, but the
-//! digits and colon are drawn as outlines only, date/steps in a dimmer grey, the block is shifted every minute and a
-//! rotating row mask turns every pixel off at least once every 3 minutes.
-//! Battery (D-21): settings, fonts, date text, steps text and the 12/24 h flag are cached; nothing is allocated
-//! per frame except what the system calls return; no timers, no partial updates, no background, no sensors.
-//! Body Battery (D-27, D-30) is read from SensorHistory at most once per minute, only while it is shown; the icons
-//! (D-28, D-34) are Dc primitives (fillEllipse / drawArc / fillCircle / fillPolygon), no bitmaps or fonts to load.
+//! Active mode: filled digits. Always-on mode on AMOLED (DECISIONS.md D-19, D-36): exactly the same fonts and layout,
+//! but the digits and colon are drawn as outlines only, date/fields in a dimmer grey, the block is shifted every
+//! minute and a rotating row mask turns every pixel off at least once every 3 minutes.
+//! Battery (D-21): settings, fonts, layout and texts are cached; the fields are read once per minute and only while
+//! shown; no timers, no partial updates, no background, no sensors switched on. Only the chosen time font is kept
+//! loaded. Icons (D-28, D-34, D-39) are Dc primitives, no bitmaps.
 class NoirTimeView extends WatchUi.WatchFace {
 
     private var _inLowPower as Boolean = false;
@@ -26,40 +25,35 @@ class NoirTimeView extends WatchUi.WatchFace {
     // shift / row-mask always-on style; MIP screens keep the normal look in low power (DECISIONS.md D-36).
     private var _burnIn as Boolean = true;
 
-    // Layout cache: recomputed only when the size setting changes (or on a new layout).
+    // Layout cache: recomputed only when the size or a field setting changes (or on a new layout).
     private var _layoutKey as Number = -1;
     private var _timeFont as Graphics.FontType = Graphics.FONT_NUMBER_MEDIUM;
-    private var _smallFont as Graphics.FontType = Graphics.FONT_SMALL;
-    private var _timeHeight as Number = 0;
-    private var _smallHeight as Number = 0;
+    private var _timeLine as Number = 0;
+    private var _dateFont as Graphics.FontType = Graphics.FONT_SMALL;
+    private var _dateHeight as Number = 0;
+    private var _upperDate as Boolean = false;
+    private var _rowFont as Graphics.FontType = Graphics.FONT_SMALL;
+    private var _rowHeight as Number = 0;
     private var _spacing as Number = 0;
+    private var _shift as Number = 0;
     private var _colonGap as Number = 0;
-    private var _colonRadius as Number = 0;
+    private var _colonDot as Number = 0;
     private var _colonOffset as Number = 0;
     private var _outline as Number = 0;
-    private var _statsFont as Graphics.FontType = Graphics.FONT_SMALL;
-    private var _statsHeight as Number = 0;
-    private var _showSteps as Boolean = true;
-    private var _showBodyBattery as Boolean = true;
+    // Field rows: row 1 = left + right slot (or the bottom slot alone when both are empty), row 2 = bottom slot.
+    private var _row1 as Array<Number> = [] as Array<Number>;
+    private var _row2 as Array<Number> = [] as Array<Number>;
 
     // Text caches.
     private var _minuteOfDay as Number = -1;
     private var _dateText as String = "";
-    private var _is24Hour as Boolean = true;
     private var _hourText as String = "";
     private var _minuteText as String = "";
-    private var _steps as Number or Null = null;
-    private var _stepsKnown as Boolean = false;
-    private var _stepsText as String = "--";
-    private var _bodyBatteryAvailable as Boolean = false;
-    private var _bodyBatteryMinute as Number = -1;
-    private var _bodyBattery as Number or Null = null;
-    private var _bodyBatteryText as String = "--";
-    private var _statsWidth as Number = -1;   // -1 = recompute (texts or layout changed)
+    private var _fieldTexts as Array<String or Null> = new Array<String or Null>[NoirFields.COUNT];
+    private var _fieldsMinute as Number = -1;
 
     function initialize() {
         WatchFace.initialize();
-        _bodyBatteryAvailable = NoirBodyBattery.isAvailable();
         var settings = System.getDeviceSettings();
         if (settings has :requiresBurnInProtection) {
             _burnIn = settings.requiresBurnInProtection;
@@ -75,7 +69,7 @@ class NoirTimeView extends WatchUi.WatchFace {
     function onShow() as Void {
         NoirSettings.reload();
         _minuteOfDay = -1;   // also picks up a 12/24 h change made in the system settings
-        _bodyBatteryMinute = -1;
+        _fieldsMinute = -1;
     }
 
     function onUpdate(dc as Dc) as Void {
@@ -85,9 +79,9 @@ class NoirTimeView extends WatchUi.WatchFace {
             dc.setAntiAlias(true);
         }
 
-        // Body Battery is hidden when the API is not on the device (D-27).
-        updateLayout(dc, NoirSettings.timeSize(), NoirSettings.showSteps(),
-            NoirSettings.showBodyBattery() && _bodyBatteryAvailable);
+        // Unsupported fields come back as NONE (D-39).
+        updateLayout(dc, NoirSettings.timeSize(), NoirSettings.field(NoirSettings.KEY_FIELD_LEFT),
+            NoirSettings.field(NoirSettings.KEY_FIELD_RIGHT), NoirSettings.field(NoirSettings.KEY_FIELD_BOTTOM));
         var clock = System.getClockTime();
         updateTexts(clock);
 
@@ -98,7 +92,7 @@ class NoirTimeView extends WatchUi.WatchFace {
         var colonColor = NoirLayout.colonColor(hourColor, minuteColor);
         var textColor = NoirLayout.COLOR_TEXT;
         var centerX = dc.getWidth() / 2;
-        var centerY = dc.getHeight() / 2;
+        var centerY = dc.getHeight() / 2 - _shift;
         if (lowPower) {
             var shift = NoirLayout.aodShift(clock.min);
             centerX += shift[0];
@@ -106,33 +100,37 @@ class NoirTimeView extends WatchUi.WatchFace {
             textColor = NoirLayout.COLOR_TEXT_AOD;
         }
 
-        var justifyRight = Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER;
-        var justifyLeft = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
+        // Time: top-justified on the font line (the digits fill it, D-38); the colon squares sit between.
+        var top = centerY - _timeLine / 2;
         var hourX = centerX - _colonGap / 2;
         var minuteX = centerX + _colonGap / 2;
-
+        var dotX = centerX - _colonDot / 2;
+        var dotY1 = centerY - _colonOffset - _colonDot / 2;
+        var dotY2 = centerY + _colonOffset - _colonDot / 2;
         if (lowPower) {
-            drawOutlinedText(dc, hourX, centerY, _hourText, justifyRight, hourColor);
-            drawOutlinedText(dc, minuteX, centerY, _minuteText, justifyLeft, minuteColor);
-            dc.setColor(colonColor, Graphics.COLOR_TRANSPARENT);
-            dc.setPenWidth(_outline);
-            dc.drawCircle(centerX, centerY - _colonOffset, _colonRadius);
-            dc.drawCircle(centerX, centerY + _colonOffset, _colonRadius);
+            drawOutlinedText(dc, hourX, top, _hourText, Graphics.TEXT_JUSTIFY_RIGHT, hourColor);
+            drawOutlinedText(dc, minuteX, top, _minuteText, Graphics.TEXT_JUSTIFY_LEFT, minuteColor);
+            drawOutlinedSquare(dc, dotX, dotY1, colonColor);
+            drawOutlinedSquare(dc, dotX, dotY2, colonColor);
         } else {
             dc.setColor(hourColor, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(hourX, centerY, _timeFont, _hourText, justifyRight);
+            dc.drawText(hourX, top, _timeFont, _hourText, Graphics.TEXT_JUSTIFY_RIGHT);
             dc.setColor(minuteColor, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(minuteX, centerY, _timeFont, _minuteText, justifyLeft);
+            dc.drawText(minuteX, top, _timeFont, _minuteText, Graphics.TEXT_JUSTIFY_LEFT);
             dc.setColor(colonColor, Graphics.COLOR_TRANSPARENT);
-            dc.fillCircle(centerX, centerY - _colonOffset, _colonRadius);
-            dc.fillCircle(centerX, centerY + _colonOffset, _colonRadius);
+            dc.fillRectangle(dotX, dotY1, _colonDot, _colonDot);
+            dc.fillRectangle(dotX, dotY2, _colonDot, _colonDot);
         }
 
         dc.setColor(textColor, Graphics.COLOR_TRANSPARENT);
         var justifyCenter = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        dc.drawText(centerX, centerY - (_timeHeight / 2 + _spacing + _smallHeight / 2), _smallFont, _dateText, justifyCenter);
-        if (_showSteps || _showBodyBattery) {
-            drawStatsRow(dc, centerX, centerY + _timeHeight / 2 + _spacing + _statsHeight / 2, justifyLeft);
+        dc.drawText(centerX, top - _spacing - _dateHeight / 2, _dateFont, _dateText, justifyCenter);
+        var rowY = top + _timeLine + _spacing + _rowHeight / 2;
+        if (_row1.size() > 0) {
+            drawRow(dc, centerX, rowY, _row1, textColor);
+        }
+        if (_row2.size() > 0) {
+            drawRow(dc, centerX, rowY + _rowHeight + _spacing, _row2, textColor);
         }
 
         if (lowPower) {
@@ -140,29 +138,114 @@ class NoirTimeView extends WatchUi.WatchFace {
         }
     }
 
-    //! "[feet] 8,432  [battery] 76", centred on centreX. Colour is already set (grey / dim grey in always-on).
-    //! The row width is recomputed only when one of its texts or the layout changed.
-    private function drawStatsRow(dc as Dc, centerX as Number, y as Number, justifyLeft as Number) as Void {
-        var h = _statsHeight;
-        if (_statsWidth < 0) {
-            _statsWidth = NoirLayout.statsRowWidth(h, _showSteps, dc.getTextWidthInPixels(_stepsText, _statsFont),
-                _showBodyBattery, dc.getTextWidthInPixels(_bodyBatteryText, _statsFont));
+    //! "[icon] text  [icon] text" centred on centerX. Colour is already set (grey / dim grey in always-on).
+    private function drawRow(dc as Dc, centerX as Number, y as Number, fields as Array<Number>, color as Number) as Void {
+        var h = _rowHeight;
+        var widths = new Array<Number>[fields.size()];
+        for (var i = 0; i < fields.size(); i++) {
+            widths[i] = NoirLayout.fieldWidth(fields[i], h, dc.getTextWidthInPixels(textOf(fields[i]), _rowFont));
         }
-        var x = centerX - _statsWidth / 2;
+        var x = centerX - NoirLayout.rowWidth(h, widths[0], fields.size() > 1 ? widths[1] : 0) / 2;
         var iconH = NoirLayout.iconHeight(h);
         var iconTop = y - iconH / 2;
         var gap = NoirLayout.iconGap(h);
-        if (_showSteps) {
-            var w = NoirLayout.stepsIconWidth(h);
-            drawStepsIcon(dc, x, iconTop, w, iconH);
-            x += w + gap;
-            dc.drawText(x, y, _statsFont, _stepsText, justifyLeft);
-            x += dc.getTextWidthInPixels(_stepsText, _statsFont) + NoirLayout.groupGap(h);
+        var justifyLeft = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
+        for (var i = 0; i < fields.size(); i++) {
+            var field = fields[i];
+            var w = NoirLayout.iconWidth(field, h);
+            drawIcon(dc, field, x, iconTop, w, iconH, color);
+            dc.drawText(x + w + gap, y, _rowFont, textOf(field), justifyLeft);
+            x += widths[i] + NoirLayout.groupGap(h);
         }
-        if (_showBodyBattery) {
-            var w = NoirLayout.bodyBatteryIconWidth(h);
-            drawBodyBatteryIcon(dc, x, iconTop, w, iconH);
-            dc.drawText(x + w + gap, y, _statsFont, _bodyBatteryText, justifyLeft);
+    }
+
+    private function textOf(field as Number) as String {
+        var text = _fieldTexts[field];
+        return text == null ? NoirFormat.NO_VALUE : text as String;
+    }
+
+    //! Icon of a field in the box x, top, w x h, drawn in color with Dc primitives (API 1.0.0 / 1.2.0; D-39).
+    private function drawIcon(dc as Dc, field as Number, x as Number, top as Number, w as Number, h as Number,
+            color as Number) as Void {
+        if (field == NoirFields.STEPS) {
+            drawStepsIcon(dc, x, top, w, h);
+        } else if (field == NoirFields.BODY_BATTERY) {
+            drawBodyBatteryIcon(dc, x, top, w, h);
+        } else if (field == NoirFields.HEART_RATE) {
+            // Two lobes and a point.
+            var r = w * 27 / 100;
+            dc.fillCircle(x + r, top + r, r);
+            dc.fillCircle(x + w - r, top + r, r);
+            dc.fillPolygon([[x + w * 2 / 100, top + r * 13 / 10], [x + w * 98 / 100, top + r * 13 / 10], [x + w / 2, top + h]]);
+        } else if (field == NoirFields.BATTERY || field == NoirFields.BATTERY_DAYS) {
+            drawBatteryIcon(dc, x, top, w, h, color, field == NoirFields.BATTERY_DAYS);
+        } else if (field == NoirFields.CALORIES) {
+            // Flame: round base and a tip leaning right.
+            var r = w / 2;
+            var cy = top + h - r;
+            dc.fillCircle(x + r, cy, r);
+            dc.fillPolygon([[x, cy], [x + w * 18 / 100, top + h * 42 / 100], [x + w * 48 / 100, top],
+                [x + w * 82 / 100, top + h * 30 / 100], [x + w, cy]]);
+        } else if (field == NoirFields.FLOORS) {
+            // Three steps up to the right.
+            dc.fillPolygon([[x, top + h], [x, top + h * 2 / 3], [x + w / 3, top + h * 2 / 3], [x + w / 3, top + h / 3],
+                [x + w * 2 / 3, top + h / 3], [x + w * 2 / 3, top], [x + w, top], [x + w, top + h]]);
+        } else if (field == NoirFields.INTENSITY) {
+            // Lightning bolt.
+            dc.fillPolygon([[x + w * 62 / 100, top], [x, top + h * 58 / 100], [x + w * 44 / 100, top + h * 58 / 100],
+                [x + w * 34 / 100, top + h], [x + w, top + h * 40 / 100], [x + w * 56 / 100, top + h * 40 / 100]]);
+        } else if (field == NoirFields.NOTIFICATIONS) {
+            // Speech bubble.
+            var bubble = h * 76 / 100;
+            dc.fillRoundedRectangle(x, top, w, bubble, h / 5);
+            dc.fillPolygon([[x + w * 18 / 100, top + bubble - 1], [x + w * 18 / 100, top + h], [x + w * 48 / 100, top + bubble - 1]]);
+        } else if (field == NoirFields.STRESS) {
+            // Zig-zag line.
+            var pen = h / 7 < 2 ? 2 : h / 7;
+            var m = pen / 2;
+            dc.setPenWidth(pen);
+            var xs = [x + m, x + w * 22 / 100, x + w * 44 / 100, x + w * 64 / 100, x + w * 82 / 100, x + w - m];
+            var ys = [top + h / 2, top + m, top + h - m, top + h * 20 / 100, top + h * 75 / 100, top + h / 2];
+            for (var i = 0; i < 5; i++) {
+                dc.drawLine(xs[i], ys[i], xs[i + 1], ys[i + 1]);
+            }
+        } else if (field == NoirFields.TEMPERATURE) {
+            // Thermometer: stem and bulb.
+            var r = w / 2;
+            dc.fillRoundedRectangle(x + w / 4, top, w - (w / 4) * 2, h - r, w / 4);
+            dc.fillCircle(x + r, top + h - r, r);
+        } else if (field == NoirFields.DISTANCE) {
+            // Map pin with a hole.
+            var r = w / 2;
+            dc.fillCircle(x + r, top + r, r);
+            dc.fillPolygon([[x + w * 4 / 100, top + r * 13 / 10], [x + w * 96 / 100, top + r * 13 / 10], [x + r, top + h]]);
+            dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(x + r, top + r, r * 2 / 5);
+            dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        }
+    }
+
+    //! Horizontal battery: outline body and terminal; battery % gets a level bar, battery days a clock-like tick.
+    private function drawBatteryIcon(dc as Dc, x as Number, top as Number, w as Number, h as Number, color as Number,
+            days as Boolean) as Void {
+        var bh = h * 72 / 100;
+        var y0 = top + (h - bh) / 2;
+        var bw = w * 88 / 100;
+        var pen = bh / 7 < 2 ? 2 : bh / 7;
+        dc.fillRectangle(x, y0, bw, bh);
+        dc.fillRectangle(x + bw, y0 + bh / 4, w - bw, bh - (bh / 4) * 2);
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
+        dc.fillRectangle(x + pen, y0 + pen, bw - 2 * pen, bh - 2 * pen);
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        var inset = pen * 2;
+        if (days) {
+            // Three cells: a "remaining time" gauge rather than a percentage bar.
+            var cell = (bw - 2 * inset - 2 * pen) / 3;
+            for (var i = 0; i < 3; i++) {
+                dc.fillRectangle(x + inset + i * (cell + pen), y0 + inset, cell, bh - 2 * inset);
+            }
+        } else {
+            dc.fillRectangle(x + inset, y0 + inset, (bw - 2 * inset) * 65 / 100, bh - 2 * inset);
         }
     }
 
@@ -229,16 +312,6 @@ class NoirTimeView extends WatchUi.WatchFace {
         }
     }
 
-    function onEnterSleep() as Void {
-        _inLowPower = true;
-        WatchUi.requestUpdate();
-    }
-
-    function onExitSleep() as Void {
-        _inLowPower = false;
-        WatchUi.requestUpdate();
-    }
-
     //! Outline-only text (D-19): the text is drawn in colour at 8 neighbour offsets of _outline pixels
     //! (a dilation), then once in black at the real position, which leaves a ring _outline pixels wide.
     //! Uses only Dc.setColor / Dc.drawText (API 1.0.0) with a transparent text background.
@@ -253,127 +326,170 @@ class NoirTimeView extends WatchUi.WatchFace {
         dc.drawText(x, y, _timeFont, text, justification);
     }
 
-    //! Picks the time font for the size setting (first candidate that fits, outline included), then the largest
-    //! stats-row font that fits next to it, and caches all derived metrics. Same result in active and always-on
-    //! mode. Runs only when the size setting or a show/hide setting changes.
-    private function updateLayout(dc as Dc, size as Number, showSteps as Boolean, showBodyBattery as Boolean) as Void {
-        var key = size * 4 + (showSteps ? 1 : 0) + (showBodyBattery ? 2 : 0);
+    //! Outline-only colon square: the same dilation as the digits (square grown by _outline, then the square itself
+    //! in black).
+    private function drawOutlinedSquare(dc as Dc, x as Number, y as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.fillRectangle(x - _outline, y - _outline, _colonDot + 2 * _outline, _colonDot + 2 * _outline);
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
+        dc.fillRectangle(x, y, _colonDot, _colonDot);
+    }
+
+    //! Picks the time font for the size setting (the selected Bebas Neue size or the largest smaller one that fits,
+    //! outline included), then the largest field-row font that fits next to it, and caches all derived metrics.
+    //! Same result in active and always-on mode. Runs only when the size or a field setting changes; only the chosen
+    //! time font stays loaded (the others are released as soon as they have been measured).
+    private function updateLayout(dc as Dc, size as Number, left as Number, right as Number, bottom as Number) as Void {
+        var key = ((size * NoirFields.COUNT + left) * NoirFields.COUNT + right) * NoirFields.COUNT + bottom;
         if (key == _layoutKey) {
             return;
         }
         _layoutKey = key;
-        _showSteps = showSteps;
-        _showBodyBattery = showBodyBattery;
-        _statsWidth = -1;
-        _smallFont = Graphics.FONT_SMALL;
-        _smallHeight = dc.getFontHeight(_smallFont);
-        var dateWidth = dc.getTextWidthInPixels(NoirLayout.SAMPLE_DATE, _smallFont);
-        // The time font is chosen against the smallest stats font, so showing Body Battery never shrinks the time.
-        var statsFonts = NoirLayout.statsFontCandidates();
-        var smallest = statsFonts[statsFonts.size() - 1];
-        var found = false;
-        if (size == NoirSettings.SIZE_XXLARGE) {
-            found = chooseVectorFont(dc, dateWidth, smallest);
+        _fieldsMinute = -1;
+        if (left == NoirFields.NONE && right == NoirFields.NONE) {
+            _row1 = bottom == NoirFields.NONE ? [] as Array<Number> : [bottom];
+            _row2 = [] as Array<Number>;
+        } else {
+            _row1 = left == NoirFields.NONE ? [right] : (right == NoirFields.NONE ? [left] : [left, right]);
+            _row2 = bottom == NoirFields.NONE ? [] as Array<Number> : [bottom];
         }
-        if (!found) {
-            var candidates = NoirLayout.fontCandidates(size);
-            _timeFont = candidates[candidates.size() - 1];
-            for (var i = 0; i < candidates.size(); i++) {
-                if (fits(dc, candidates[i], NoirLayout.DIGIT_HALF_PERCENT_NUMBER, dateWidth, smallest)) {
-                    _timeFont = candidates[i];
-                    break;
-                }
-            }
-        }
-        var digitPercent = found ? NoirLayout.DIGIT_HALF_PERCENT_CONDENSED : NoirLayout.DIGIT_HALF_PERCENT_NUMBER;
-        _statsFont = smallest;
-        for (var i = 0; i < statsFonts.size(); i++) {
-            if (fits(dc, _timeFont, digitPercent, dateWidth, statsFonts[i])) {
-                _statsFont = statsFonts[i];
+        var width = dc.getWidth();
+        _spacing = NoirLayout.rowSpacing(dc.getHeight());
+        chooseDateFont(width);
+        _dateHeight = dc.getFontHeight(_dateFont);
+        var dateWidth = dc.getTextWidthInPixels(NoirLayout.SAMPLE_DATE, _dateFont);
+
+        // Row font candidates, largest first. The time font is chosen against the smallest one, so picking a field
+        // never shrinks the time; then the largest row font that fits next to that time font is used.
+        var rowFonts = rowFontCandidates(width);
+        var smallest = rowFonts[rowFonts.size() - 1];
+        var ids = NoirLayout.timeFontIds();
+        var order = NoirLayout.timeFontOrder(size);
+        for (var i = 0; i < order.size(); i++) {
+            _timeFont = WatchUi.loadResource(ids[order[i]]) as Graphics.FontType;
+            if (fits(dc, dateWidth, smallest)) {
                 break;
             }
         }
-        _statsHeight = dc.getFontHeight(_statsFont);
-        _timeHeight = dc.getFontHeight(_timeFont);
-        _spacing = NoirLayout.rowSpacing(dc.getHeight());
-        _colonGap = NoirLayout.colonGap(_timeHeight);
-        _colonRadius = NoirLayout.colonRadius(_timeHeight);
-        _colonOffset = NoirLayout.colonDotOffset(_timeHeight);
-        _outline = NoirLayout.outlineWidth(_timeHeight);
+        _rowFont = smallest;
+        for (var i = 0; i < rowFonts.size() - 1; i++) {
+            if (fits(dc, dateWidth, rowFonts[i])) {
+                _rowFont = rowFonts[i];
+                break;
+            }
+        }
+        _rowHeight = dc.getFontHeight(_rowFont);
+        _timeLine = dc.getFontHeight(_timeFont);
+        var digitH = NoirLayout.digitHeight(_timeLine);
+        _colonGap = NoirLayout.colonGap(digitH);
+        _colonDot = NoirLayout.colonDot(digitH);
+        _colonOffset = NoirLayout.colonOffset(digitH);
+        _outline = NoirLayout.outlineWidth(_timeLine);
+        _shift = NoirLayout.blockShift(_row2.size() > 0, _rowHeight, _spacing);
     }
 
-    //! XX-Large (D-24): the largest scalable font (Graphics.getVectorFont, API 4.2.1) that fits, tried from
-    //! XXL_SIZE_MAX down. Returns false (caller falls back to the X-Large system fonts) if the API or the faces are
-    //! not available or nothing fits. Called once per size change only; the chosen VectorFont is kept in _timeFont.
+    //! Date font (D-40): RobotoCondensed in upper case for Latin-script languages where the device has it, else the
+    //! system FONT_SMALL with the system's own day / month names as they are.
     (:ciq4)
-    private function chooseVectorFont(dc as Dc, dateWidth as Number, statsFont as Graphics.FontType) as Boolean {
-        if (!(Graphics has :getVectorFont)) {
-            return false;
-        }
-        var width = dc.getWidth();
-        for (var px = NoirLayout.xxlSizeMax(width); px >= NoirLayout.xxlSizeMin(width); px -= NoirLayout.XXL_SIZE_STEP) {
-            var font = Graphics.getVectorFont({ :face => NoirLayout.xxlFaces(), :size => px });
-            if (font == null) {
-                return false;
-            }
-            if (fits(dc, font, NoirLayout.DIGIT_HALF_PERCENT_CONDENSED, dateWidth, statsFont)) {
-                _timeFont = font;
-                return true;
+    private function chooseDateFont(screenWidth as Number) as Void {
+        _dateFont = Graphics.FONT_SMALL;
+        _upperDate = false;
+        if ((Graphics has :getVectorFont) && NoirLayout.isBasicLatin(System.getDeviceSettings().systemLanguage)) {
+            var font = Graphics.getVectorFont({ :face => NoirLayout.textFaces(), :size => NoirLayout.dateVectorSize(screenWidth) });
+            if (font != null) {
+                _dateFont = font;
+                _upperDate = true;
             }
         }
-        return false;
     }
 
-    //! Devices below API 4.2.1 (Forerunner 245 / 745 / 945 / 55 / 645 / 935, D-36): no Graphics.getVectorFont, which the
-    //! compiler rejects for them even behind a `has` check, so this variant is built instead; XX-Large = X-Large there.
+    //! Field row fonts: RobotoCondensed in the sizes of NoirLayout.rowVectorSizes, else the system fonts.
+    (:ciq4)
+    private function rowFontCandidates(screenWidth as Number) as Array<Graphics.FontType> {
+        if (Graphics has :getVectorFont) {
+            var sizes = NoirLayout.rowVectorSizes(screenWidth);
+            var fonts = [] as Array<Graphics.FontType>;
+            for (var i = 0; i < sizes.size(); i++) {
+                var font = Graphics.getVectorFont({ :face => NoirLayout.textFaces(), :size => sizes[i] });
+                if (font == null) {
+                    break;
+                }
+                fonts.add(font);
+            }
+            if (fonts.size() > 0) {
+                return fonts;
+            }
+        }
+        return NoirLayout.rowSystemFonts();
+    }
+
+    //! Devices below API 4.2.1 (D-36): Graphics.getVectorFont is unknown to the compiler there; system fonts.
     (:ciq3)
-    private function chooseVectorFont(dc as Dc, dateWidth as Number, statsFont as Graphics.FontType) as Boolean {
-        return false;
+    private function chooseDateFont(screenWidth as Number) as Void {
+        _dateFont = Graphics.FONT_SMALL;
+        _upperDate = false;
     }
 
-    //! Fit check with the widest sample texts in statsFont for the fields currently shown.
-    private function fits(dc as Dc, font as Graphics.FontType, digitPercent as Number, dateWidth as Number,
-            statsFont as Graphics.FontType) as Boolean {
-        var height = dc.getFontHeight(font);
-        var statsHeight = dc.getFontHeight(statsFont);
-        var statsWidth = NoirLayout.statsRowWidth(statsHeight,
-            _showSteps, dc.getTextWidthInPixels(NoirLayout.SAMPLE_STEPS, statsFont),
-            _showBodyBattery, dc.getTextWidthInPixels(NoirLayout.SAMPLE_BODY_BATTERY, statsFont));
-        return NoirLayout.blockFits(dc.getWidth(), height, NoirLayout.digitHalfHeight(height, digitPercent),
-            dc.getTextWidthInPixels("00", font), _smallHeight, dateWidth, statsHeight, statsWidth,
-            NoirLayout.outlineWidth(height));
+    (:ciq3)
+    private function rowFontCandidates(screenWidth as Number) as Array<Graphics.FontType> {
+        return NoirLayout.rowSystemFonts();
     }
 
-    //! Date, hour and minute texts and the 12/24 h flag: rebuilt once per minute. Steps text: rebuilt only when the
-    //! count changes. Body Battery: read once per minute. Hidden fields are not read at all.
+    //! Fit check of the current _timeFont with the widest sample texts of the shown fields in rowFont.
+    private function fits(dc as Dc, dateWidth as Number, rowFont as Graphics.FontType) as Boolean {
+        var line = dc.getFontHeight(_timeFont);
+        var rowHeight = dc.getFontHeight(rowFont);
+        return NoirLayout.blockFits(dc.getWidth(), line,
+            NoirLayout.timeWidth(dc.getTextWidthInPixels("00", _timeFont), NoirLayout.digitHeight(line)),
+            NoirLayout.outlineWidth(line), _dateHeight, dateWidth, rowHeight,
+            sampleRowWidth(dc, _row1, rowFont, rowHeight), sampleRowWidth(dc, _row2, rowFont, rowHeight));
+    }
+
+    private function sampleRowWidth(dc as Dc, fields as Array<Number>, font as Graphics.FontType, height as Number) as Number {
+        var widths = [0, 0];
+        for (var i = 0; i < fields.size(); i++) {
+            widths[i] = NoirLayout.fieldWidth(fields[i], height,
+                dc.getTextWidthInPixels(NoirFields.sampleText(fields[i]), font));
+        }
+        return NoirLayout.rowWidth(height, widths[0], widths[1]);
+    }
+
+    //! Date, hour and minute texts: rebuilt once per minute. Shown fields: read once per minute (and after a settings
+    //! or layout change); fields that are not shown are not read at all.
     private function updateTexts(clock as System.ClockTime) as Void {
         var minuteOfDay = clock.hour * 60 + clock.min;
         if (minuteOfDay != _minuteOfDay) {
             _minuteOfDay = minuteOfDay;
             var info = Gregorian.info(Time.now(), Time.FORMAT_MEDIUM);
             _dateText = Lang.format("$1$ $2$ $3$", [info.day_of_week, info.day, info.month]);
-            _is24Hour = System.getDeviceSettings().is24Hour;
-            _hourText = NoirLayout.formatHour(clock.hour, _is24Hour);
+            if (_upperDate) {
+                _dateText = _dateText.toUpper();
+            }
+            _hourText = NoirLayout.formatHour(clock.hour, System.getDeviceSettings().is24Hour);
             _minuteText = clock.min.format("%02d");
         }
-        if (_showSteps) {
-            var steps = ActivityMonitor.getInfo().steps;
-            if (!_stepsKnown || steps != _steps) {
-                _stepsKnown = true;
-                _steps = steps;
-                _stepsText = NoirLayout.formatSteps(steps);
-                _statsWidth = -1;
-            }
+        if (_fieldsMinute != minuteOfDay) {
+            _fieldsMinute = minuteOfDay;
+            readFields(_row1);
+            readFields(_row2);
         }
-        if (_showBodyBattery && _bodyBatteryMinute != minuteOfDay) {
-            _bodyBatteryMinute = minuteOfDay;
-            var level = NoirBodyBattery.read();
-            if (level != _bodyBattery || _bodyBatteryText.equals("--")) {
-                _bodyBattery = level;
-                _bodyBatteryText = NoirLayout.formatBodyBattery(level);
-                _statsWidth = -1;
-            }
+    }
+
+    private function readFields(fields as Array<Number>) as Void {
+        for (var i = 0; i < fields.size(); i++) {
+            _fieldTexts[fields[i]] = NoirFields.text(fields[i]);
         }
+    }
+
+    function onEnterSleep() as Void {
+        _inLowPower = true;
+        WatchUi.requestUpdate();
+    }
+
+    function onExitSleep() as Void {
+        _inLowPower = false;
+        _fieldsMinute = -1;
+        WatchUi.requestUpdate();
     }
 
     //! True when the watch is in always-on / low power mode.

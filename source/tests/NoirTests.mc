@@ -3,6 +3,7 @@ import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
 import Toybox.Test;
+import Toybox.WatchUi;
 
 //! Run No Evil unit tests (Core Topics -> Unit Testing). Compiled only with `monkeyc --unit-test` and run with
 //! `monkeydo <prg> <device> -t` in the simulator; test code is not included in normal builds.
@@ -82,63 +83,59 @@ function testCycleWritesPropertyAndWraps(logger as Logger) as Boolean {
     return true;
 }
 
+//! Time font order (D-38): the selected size first, then every smaller one; one resource per size.
 (:test)
-function testFontCandidates(logger as Logger) as Boolean {
-    var small = NoirLayout.fontCandidates(NoirSettings.SIZE_SMALL);
-    var medium = NoirLayout.fontCandidates(NoirSettings.SIZE_MEDIUM);
-    var large = NoirLayout.fontCandidates(NoirSettings.SIZE_LARGE);
-    var xlarge = NoirLayout.fontCandidates(NoirSettings.SIZE_XLARGE);
-    var xxlarge = NoirLayout.fontCandidates(NoirSettings.SIZE_XXLARGE);
-    Test.assertEqual(small[0], Graphics.FONT_NUMBER_MILD);
-    Test.assertEqual(medium[0], Graphics.FONT_NUMBER_MEDIUM);
-    Test.assertEqual(large[0], Graphics.FONT_NUMBER_HOT);
-    Test.assertEqual(xlarge[0], Graphics.FONT_NUMBER_THAI_HOT);
-    // XX-Large uses a scalable font; its system-font fallback is the X-Large list.
-    Test.assertEqual(xxlarge[0], Graphics.FONT_NUMBER_THAI_HOT);
-    Test.assertEqual(xxlarge.size(), xlarge.size());
-    // Every list ends with a font no bigger than the next smaller size's first choice.
-    Test.assertEqual(medium[medium.size() - 1], Graphics.FONT_NUMBER_MILD);
-    Test.assertEqual(large[large.size() - 1], Graphics.FONT_NUMBER_MILD);
-    Test.assertEqual(xlarge[xlarge.size() - 1], Graphics.FONT_NUMBER_MILD);
-    Test.assertEqual(small[small.size() - 1], Graphics.FONT_LARGE);
+function testTimeFontOrder(logger as Logger) as Boolean {
+    var order = NoirLayout.timeFontOrder(NoirSettings.SIZE_XXLARGE);
+    Test.assertEqual(order.size(), 5);
+    for (var i = 0; i < 5; i++) {
+        Test.assertEqual(order[i], 4 - i);
+    }
+    Test.assertEqual(NoirLayout.timeFontOrder(NoirSettings.SIZE_SMALL).size(), 1);
+    Test.assertEqual(NoirLayout.timeFontOrder(NoirSettings.SIZE_MEDIUM)[0], 1);
+    Test.assertEqual(NoirLayout.timeFontIds().size(), NoirSettings.sizeValues().size());
     return true;
 }
 
-//! XX-Large scalable font search range and faces (D-24).
+//! Real Bebas Neue fonts on the simulated device (D-38): the build picked the folder for this screen (line height =
+//! generated digit height + 2), the sizes grow, digits are tabular, and the memory a loaded font costs is logged and
+//! leaves room on the 96 KB API 3.x watch faces (fonts live in the app heap before API 4.0.0).
 (:test)
-function testXxlSearch(logger as Logger) as Boolean {
-    Test.assert(NoirLayout.XXL_SIZE_STEP > 0);
-    Test.assert(NoirLayout.XXL_SIZE_MIN < NoirLayout.XXL_SIZE_MAX);
-    // The search starts above the largest system number font (FONT_NUMBER_THAI_HOT, 210 px on this device).
-    Test.assert(NoirLayout.XXL_SIZE_MAX > 210);
-    var faces = NoirLayout.xxlFaces();
-    Test.assertEqual(faces.size(), 2);
-    Test.assertEqual(faces[0], "RobotoCondensedRegular");
-    Test.assertEqual(faces[1], "BionicMedium");
-    Test.assert(NoirLayout.DIGIT_HALF_PERCENT_CONDENSED >= NoirLayout.DIGIT_HALF_PERCENT_NUMBER);
-    Test.assertEqual(NoirLayout.digitHalfHeight(210, 28), 59);   // 58.8 rounded up
-    Test.assertEqual(NoirLayout.digitHalfHeight(200, 33), 66);
-    Test.assertEqual(NoirLayout.digitHalfHeight(100, 28), 28);
+function testTimeFontsOnDevice(logger as Logger) as Boolean {
+    var ids = NoirLayout.timeFontIds();
+    var expected = NoirTestUtil.expectedDigitHeights(System.getDeviceSettings().screenWidth);
+    var previous = 0;
+    for (var i = 0; i < ids.size(); i++) {
+        var before = System.getSystemStats().usedMemory;
+        var font = WatchUi.loadResource(ids[i]) as Graphics.FontType;
+        var after = System.getSystemStats().usedMemory;
+        var height = Graphics.getFontHeight(font);
+        logger.debug("TimeFont" + i.toString() + " line " + height.toString() + " px, heap +" + (after - before).toString()
+            + " B, free " + (System.getSystemStats().totalMemory - after).toString() + " B");
+        Test.assert(height > previous);
+        previous = height;
+        if (expected != null) {
+            Test.assertEqual(height, expected[i] + NoirLayout.TIME_LINE_EXTRA);
+        }
+        Test.assert(System.getSystemStats().totalMemory - after > 16384);
+    }
     return true;
 }
 
-//! XX-Large search range scales with the screen width (D-36): exact on the 454 px reference, proportional elsewhere.
-(:test)
-function testXxlSizeScaling(logger as Logger) as Boolean {
-    Test.assertEqual(NoirLayout.xxlSizeMax(454), NoirLayout.XXL_SIZE_MAX);
-    Test.assertEqual(NoirLayout.xxlSizeMin(454), NoirLayout.XXL_SIZE_MIN);
-    Test.assertEqual(NoirLayout.xxlSizeMax(260), 137);   // 240 * 260 / 454
-    Test.assertEqual(NoirLayout.xxlSizeMin(260), 103);   // 180 * 260 / 454
-    Test.assert(NoirLayout.xxlSizeMax(466) > NoirLayout.XXL_SIZE_MAX);
-    Test.assert(NoirLayout.xxlSizeMin(208) < NoirLayout.xxlSizeMax(208));
-    return true;
-}
-
-//! Real scalable font on the simulated device: where Graphics.getVectorFont exists, it returns a font for the
-//! XX-Large faces at this screen's smallest XX-Large size (D-24, D-36). Devices without it fall back to X-Large.
+//! Companion RobotoCondensed font (D-40) where Graphics.getVectorFont exists.
 (:test)
 function testVectorFontAvailable(logger as Logger) as Boolean {
     return NoirTestUtil.checkVectorFont(logger);
+}
+
+(:test)
+function testLanguageAllowList(logger as Logger) as Boolean {
+    Test.assert(NoirLayout.isBasicLatin(System.LANGUAGE_ENG));
+    Test.assert(NoirLayout.isBasicLatin(System.LANGUAGE_DEU));
+    Test.assert(!NoirLayout.isBasicLatin(System.LANGUAGE_HEB));
+    Test.assert(!NoirLayout.isBasicLatin(System.LANGUAGE_RUS));
+    Test.assert(!NoirLayout.isBasicLatin(System.LANGUAGE_CHS));
+    return true;
 }
 
 (:test)
@@ -150,33 +147,35 @@ function testInsideCircle(logger as Logger) as Boolean {
     return true;
 }
 
-//! Fit math with fēnix 9 Pro 47mm font heights (device reference) and widths measured from the device fonts.
+//! Fit math on the 454 px screen with the generated XX-Large font (line 157, "00" 170 px wide, D-38), a 53 px date
+//! 200 px wide and 53 px field rows (D-39).
 (:test)
 function testBlockFits(logger as Logger) as Boolean {
-    // 454 px screen, FONT_SMALL height 53, date 237 px, stats row 160 px wide (Roboto-Regular, D-23).
-    Test.assert(NoirLayout.blockFits(454, 113, 32, 89, 53, 237, 53, 160, 2));     // NUMBER_MILD
-    Test.assert(NoirLayout.blockFits(454, 153, 43, 120, 53, 237, 53, 160, 2));    // NUMBER_MEDIUM
-    Test.assert(NoirLayout.blockFits(454, 210, 59, 165, 53, 237, 53, 160, 3));    // NUMBER_THAI_HOT (X-Large) fits on its digit box
-    Test.assert(NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 53, 160, 3));    // RobotoCondensedRegular 208 px (XX-Large)
-    Test.assert(!NoirLayout.blockFits(454, 212, 70, 178, 53, 237, 53, 160, 3));   // next XX-Large step: too wide
-    Test.assert(!NoirLayout.blockFits(454, 210, 105, 165, 53, 237, 53, 160, 3));  // same font with the full line height as box
-    Test.assert(!NoirLayout.blockFits(454, 260, 70, 100, 53, 237, 53, 160, 3));   // date/steps rows pushed off the circle
-    Test.assert(!NoirLayout.blockFits(454, 113, 32, 89, 53, 420, 53, 160, 2));    // date too wide
-    // Stats row hidden (width 0) never blocks; a wide stats row in a small font fits where FONT_SMALL does not (D-28).
-    Test.assert(NoirLayout.blockFits(454, 260, 70, 100, 53, 0, 0, 0, 3) == NoirLayout.insideCircle(215, 0, 130 + 13 + 53));
-    Test.assert(NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 37, 232, 3));    // XX-Large + both fields in FONT_XTINY
-    Test.assert(!NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 53, 326, 3));   // ... but not in FONT_SMALL
-    var radius = 454 / 2 - NoirLayout.EDGE_MARGIN;
-    Test.assert(radius == 215);
+    var timeW = NoirLayout.timeWidth(170, 155);
+    Test.assertEqual(timeW, 381);
+    Test.assert(NoirLayout.blockFits(454, 157, timeW, 2, 53, 200, 53, 300, 0));     // one row: fits
+    Test.assert(!NoirLayout.blockFits(454, 157, timeW, 2, 53, 200, 53, 300, 150));  // second row shifts the time out
+    Test.assert(!NoirLayout.blockFits(454, 157, timeW + 20, 2, 53, 200, 53, 0, 0)); // wider time touches the edge
+    Test.assert(!NoirLayout.blockFits(454, 157, timeW, 2, 53, 420, 53, 0, 0));      // date too wide
+    Test.assert(!NoirLayout.blockFits(454, 157, timeW, 2, 53, 200, 53, 380, 0));    // row too wide
+    // Large (line 126, "00" 136 px): two rows fit.
+    Test.assert(NoirLayout.blockFits(454, 126, NoirLayout.timeWidth(136, 124), 2, 53, 200, 53, 300, 150));
+    Test.assertEqual(NoirLayout.blockShift(false, 53, 13), 0);
+    Test.assertEqual(NoirLayout.blockShift(true, 53, 13), 33);
+    Test.assertEqual(454 / 2 - NoirLayout.EDGE_MARGIN, 215);
     return true;
 }
 
 (:test)
 function testColonGeometry(logger as Logger) as Boolean {
-    Test.assertEqual(NoirLayout.colonRadius(52), 3);
-    Test.assertEqual(NoirLayout.colonRadius(153), 5);
-    Test.assertEqual(NoirLayout.colonGap(153), 30);
-    Test.assertEqual(NoirLayout.colonDotOffset(153), 21);
+    Test.assertEqual(NoirLayout.digitHeight(157), 155);
+    Test.assertEqual(NoirLayout.colonGap(155), 41);
+    Test.assertEqual(NoirLayout.colonDot(155), 23);
+    Test.assertEqual(NoirLayout.colonOffset(155), 34);
+    Test.assertEqual(NoirLayout.colonDot(10), 3);
+    // The squares stay apart and inside the digit height.
+    Test.assert(NoirLayout.colonOffset(155) * 2 > NoirLayout.colonDot(155));
+    Test.assert(NoirLayout.colonOffset(155) + NoirLayout.colonDot(155) / 2 < 155 / 2);
     return true;
 }
 
@@ -189,10 +188,9 @@ function testColonColor(logger as Logger) as Boolean {
 
 (:test)
 function testOutlineWidth(logger as Logger) as Boolean {
-    Test.assertEqual(NoirLayout.outlineWidth(71), 2);
-    Test.assertEqual(NoirLayout.outlineWidth(113), 2);
-    Test.assertEqual(NoirLayout.outlineWidth(153), 2);
-    Test.assertEqual(NoirLayout.outlineWidth(173), 2);
+    Test.assertEqual(NoirLayout.outlineWidth(37), 2);
+    Test.assertEqual(NoirLayout.outlineWidth(126), 2);
+    Test.assertEqual(NoirLayout.outlineWidth(157), 2);
     Test.assertEqual(NoirLayout.outlineWidth(210), 3);
     Test.assertEqual(NoirLayout.outlineWidth(1000), NoirLayout.OUTLINE_MAX);
     Test.assertEqual(NoirLayout.OUTLINE_DX.size(), 8);
@@ -219,14 +217,38 @@ function testAodShift(logger as Logger) as Boolean {
 }
 
 (:test)
-function testFormatSteps(logger as Logger) as Boolean {
-    Test.assertEqual(NoirLayout.formatSteps(null), "--");
-    Test.assertEqual(NoirLayout.formatSteps(0), "0");
-    Test.assertEqual(NoirLayout.formatSteps(999), "999");
-    Test.assertEqual(NoirLayout.formatSteps(1000), "1,000");
-    Test.assertEqual(NoirLayout.formatSteps(12345), "12,345");
-    Test.assertEqual(NoirLayout.formatSteps(100000), "100,000");
-    Test.assertEqual(NoirLayout.formatSteps(1234567), "1,234,567");
+function testFormatNumbers(logger as Logger) as Boolean {
+    Test.assertEqual(NoirFormat.thousands(null), "--");
+    Test.assertEqual(NoirFormat.thousands(0), "0");
+    Test.assertEqual(NoirFormat.thousands(999), "999");
+    Test.assertEqual(NoirFormat.thousands(1000), "1,000");
+    Test.assertEqual(NoirFormat.thousands(12345), "12,345");
+    Test.assertEqual(NoirFormat.thousands(100000), "100,000");
+    Test.assertEqual(NoirFormat.thousands(1234567), "1,234,567");
+    Test.assertEqual(NoirFormat.number(null), "--");
+    Test.assertEqual(NoirFormat.number(62), "62");
+    Test.assertEqual(NoirFormat.percent(84.6f), "85%");
+    Test.assertEqual(NoirFormat.percent(100.0f), "100%");
+    Test.assertEqual(NoirFormat.percent(null), "--");
+    Test.assertEqual(NoirFormat.days(12.9f), "12d");
+    Test.assertEqual(NoirFormat.days(0.4f), "0d");
+    Test.assertEqual(NoirFormat.days(null), "--");
+    return true;
+}
+
+(:test)
+function testFormatUnits(logger as Logger) as Boolean {
+    Test.assertEqual(NoirFormat.temperature(18.4f, true), "18\u00B0");
+    Test.assertEqual(NoirFormat.temperature(18.6f, true), "19\u00B0");
+    Test.assertEqual(NoirFormat.temperature(-3.6f, true), "-4\u00B0");
+    Test.assertEqual(NoirFormat.temperature(20, false), "68\u00B0");
+    Test.assertEqual(NoirFormat.temperature(-40, false), "-40\u00B0");
+    Test.assertEqual(NoirFormat.temperature(null, true), "--");
+    Test.assertEqual(NoirFormat.distance(523456, true), "5.2");
+    Test.assertEqual(NoirFormat.distance(0, true), "0.0");
+    Test.assertEqual(NoirFormat.distance(160934, false), "1.0");
+    Test.assertEqual(NoirFormat.distance(1234567, true), "12.3");
+    Test.assertEqual(NoirFormat.distance(null, false), "--");
     return true;
 }
 
@@ -266,50 +288,67 @@ function testRowMask(logger as Logger) as Boolean {
     return true;
 }
 
-//! Stats row geometry (D-28): icon sizes scale with the row font, hidden groups take no space.
+//! Field row geometry (D-28, D-39): icon sizes scale with the row font, empty slots take no space.
 (:test)
-function testStatsRowWidth(logger as Logger) as Boolean {
+function testFieldRowWidth(logger as Logger) as Boolean {
     Test.assertEqual(NoirLayout.iconHeight(53), 31);
-    Test.assertEqual(NoirLayout.iconHeight(37), 22);
-    Test.assertEqual(NoirLayout.stepsIconWidth(53), 26);
-    Test.assertEqual(NoirLayout.bodyBatteryIconWidth(53), 31);
+    Test.assertEqual(NoirLayout.iconWidth(NoirFields.STEPS, 53), 26);
+    Test.assertEqual(NoirLayout.iconWidth(NoirFields.BODY_BATTERY, 53), 31);
+    Test.assertEqual(NoirLayout.iconWidth(NoirFields.BATTERY, 53), 46);
     Test.assertEqual(NoirLayout.iconGap(53), 6);
     Test.assertEqual(NoirLayout.groupGap(53), 21);
-    Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, false, 76), 0);
-    Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, false, 76), 26 + 6 + 160);
-    Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, true, 76), 31 + 6 + 76);
-    Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, true, 76), 26 + 6 + 160 + 21 + 31 + 6 + 76);
-    var fonts = NoirLayout.statsFontCandidates();
-    Test.assertEqual(fonts.size(), 3);
-    Test.assertEqual(fonts[0], Graphics.FONT_SMALL);
-    Test.assertEqual(fonts[2], Graphics.FONT_XTINY);
+    Test.assertEqual(NoirLayout.fieldWidth(NoirFields.NONE, 53, 100), 0);
+    Test.assertEqual(NoirLayout.fieldWidth(NoirFields.STEPS, 53, 160), 26 + 6 + 160);
+    Test.assertEqual(NoirLayout.rowWidth(53, 0, 0), 0);
+    Test.assertEqual(NoirLayout.rowWidth(53, 192, 0), 192);
+    Test.assertEqual(NoirLayout.rowWidth(53, 0, 113), 113);
+    Test.assertEqual(NoirLayout.rowWidth(53, 192, 113), 192 + 21 + 113);
+    for (var f = 0; f < NoirFields.COUNT; f++) {
+        Test.assert(NoirLayout.iconWidthPercent(f) > 0);
+    }
+    Test.assertEqual(NoirLayout.rowSystemFonts().size(), 3);
+    Test.assertEqual(NoirLayout.rowVectorSizes(454)[0], 45);
     return true;
 }
 
-//! Nullable Body Battery value as text ("--" = null), so it can be compared with Test.assertEqual.
 (:test)
 module NoirTestUtil {
-    function bb(level as Number or Null) as String {
-        return NoirLayout.formatBodyBattery(level);
+    //! Level (Number or null) as text so it can be compared with Test.assertEqual.
+    function lv(level as Number or Null) as String {
+        return NoirFormat.number(level);
     }
 
-    //! API 4.2.1+ build: getVectorFont, when the device has it, returns a usable font for the XX-Large faces.
+    //! Digit heights scripts/make_fonts.py generated per screen width (Small..XX-Large); null = unknown width.
+    function expectedDigitHeights(width as Number) as Array<Number> or Null {
+        var table = {
+            208 => [35, 43, 51, 57, 64], 218 => [38, 46, 54, 61, 68], 240 => [42, 51, 60, 68, 76],
+            260 => [47, 57, 67, 75, 84], 280 => [50, 61, 72, 81, 91], 360 => [67, 81, 96, 108, 120],
+            390 => [73, 89, 104, 117, 131], 416 => [78, 95, 112, 126, 141], 454 => [86, 105, 124, 139, 155],
+            466 => [89, 108, 127, 142, 159]
+        } as Dictionary<Number, Array<Number>>;
+        return table[width];
+    }
+
+    //! API 4.2.1+ build: getVectorFont, when the device has it, returns the companion face in every row size.
     (:ciq4)
     function checkVectorFont(logger as Logger) as Boolean {
         if (!(Graphics has :getVectorFont)) {
-            logger.debug("getVectorFont not on this device: XX-Large uses the X-Large fonts");
+            logger.debug("getVectorFont not on this device: system fonts");
             return true;
         }
-        var width = System.getDeviceSettings().screenWidth;
-        var font = Graphics.getVectorFont({ :face => NoirLayout.xxlFaces(), :size => NoirLayout.xxlSizeMin(width) });
-        logger.debug("vector font: " + (font != null).toString());
-        if (font != null) {
-            Test.assert(Graphics.getFontHeight(font) > 0);
+        var sizes = NoirLayout.rowVectorSizes(System.getDeviceSettings().screenWidth);
+        for (var i = 0; i < sizes.size(); i++) {
+            var font = Graphics.getVectorFont({ :face => NoirLayout.textFaces(), :size => sizes[i] });
+            logger.debug("RobotoCondensedRegular " + sizes[i].toString() + ": "
+                + (font == null ? "missing" : Graphics.getFontHeight(font).toString() + " px"));
+            if (font != null) {
+                Test.assert(Graphics.getFontHeight(font) > 0);
+            }
         }
         return true;
     }
 
-    //! API 3.x build (D-36): no getVectorFont symbol; XX-Large falls back to X-Large.
+    //! API 3.x build (D-36): no getVectorFont symbol; system fonts.
     (:ciq3)
     function checkVectorFont(logger as Logger) as Boolean {
         logger.debug("API 3.x build: no vector fonts");
@@ -318,50 +357,124 @@ module NoirTestUtil {
 }
 
 (:test)
-function testParseBodyBattery(logger as Logger) as Boolean {
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(null)), "--");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(0)), "0");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(76)), "76");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(100)), "100");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(101)), "--");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(-1)), "--");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(42.6f)), "43");
-    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(42.4f)), "42");
-    Test.assertEqual(NoirLayout.formatBodyBattery(null), "--");
-    Test.assertEqual(NoirLayout.formatBodyBattery(7), "7");
-    Test.assertEqual(NoirLayout.formatBodyBattery(100), "100");
+function testParseLevel(logger as Logger) as Boolean {
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(null)), "--");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(0)), "0");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(76)), "76");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(100)), "100");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(101)), "--");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(-1)), "--");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(-2)), "--");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(42.6f)), "43");
+    Test.assertEqual(NoirTestUtil.lv(NoirLayout.parseLevel(42.4f)), "42");
     return true;
 }
 
 //! Stub with the same shape as SensorHistory.SensorSample (a `data` member).
 (:test)
-class StubBodyBatterySample {
+class StubSample {
     var data as Number or Float or Null;
     function initialize(value as Number or Float or Null) {
         data = value;
     }
 }
 
-//! NoirBodyBattery.fromSample with stubbed samples: no sample, null data, Float, Number, out of range.
+//! NoirSensors.fromSample with stubbed samples: no sample, null data, Float, Number, out of range.
 (:test)
-function testBodyBatteryFromStubSample(logger as Logger) as Boolean {
-    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(null)), "--");
-    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(null))), "--");
-    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(64))), "64");
-    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(63.7f))), "64");
-    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(250))), "--");
+function testFromStubSample(logger as Logger) as Boolean {
+    Test.assertEqual(NoirTestUtil.lv(NoirSensors.fromSample(null)), "--");
+    Test.assertEqual(NoirTestUtil.lv(NoirSensors.fromSample(new StubSample(null))), "--");
+    Test.assertEqual(NoirTestUtil.lv(NoirSensors.fromSample(new StubSample(64))), "64");
+    Test.assertEqual(NoirTestUtil.lv(NoirSensors.fromSample(new StubSample(63.7f))), "64");
+    Test.assertEqual(NoirTestUtil.lv(NoirSensors.fromSample(new StubSample(250))), "--");
     return true;
 }
 
-//! Real API on the simulated device: read() returns null or 0..100 without throwing; where the API is missing
-//! (Forerunner 645 / 935, D-36) isAvailable() is false and read() is null.
+//! Field ids, lists and parsing (D-39).
 (:test)
-function testBodyBatteryApiOnDevice(logger as Logger) as Boolean {
-    var available = NoirBodyBattery.isAvailable();
-    var level = NoirBodyBattery.read();
-    logger.debug("Body Battery available: " + available.toString() + ", read: " + NoirLayout.formatBodyBattery(level));
-    Test.assert(available || level == null);
-    Test.assert(level == null || (level >= 0 && level <= 100));
+function testFieldLists(logger as Logger) as Boolean {
+    var all = NoirFields.allValues();
+    Test.assertEqual(all.size(), NoirFields.COUNT);
+    Test.assertEqual(NoirFields.allLabels().size(), NoirFields.COUNT);
+    for (var i = 0; i < all.size(); i++) {
+        Test.assertEqual(all[i], i);
+    }
+    var supported = NoirFields.supportedValues();
+    Test.assertEqual(NoirFields.supportedLabels().size(), supported.size());
+    Test.assertEqual(supported[0], NoirFields.NONE);
+    // Fields every product has.
+    var always = [NoirFields.NONE, NoirFields.STEPS, NoirFields.HEART_RATE, NoirFields.BATTERY, NoirFields.CALORIES,
+        NoirFields.INTENSITY, NoirFields.NOTIFICATIONS, NoirFields.DISTANCE];
+    for (var i = 0; i < always.size(); i++) {
+        Test.assert(NoirFields.isSupported(always[i]));
+        Test.assert(supported.indexOf(always[i]) >= 0);
+    }
+    Test.assert(!NoirFields.isSupported(-1));
+    Test.assert(!NoirFields.isSupported(NoirFields.COUNT));
+    Test.assertEqual(NoirFields.parse(5, 1), 5);
+    Test.assertEqual(NoirFields.parse(NoirFields.COUNT, 1), 1);
+    Test.assertEqual(NoirFields.parse(-1, 2), 2);
+    Test.assertEqual(NoirFields.parse(null, 2), 2);
+    Test.assertEqual(NoirFields.parse("3", 0), 0);
+    return true;
+}
+
+//! Every field this device supports is read through its real API without throwing (the device-dependent variants
+//! and `has` checks are exercised here on each simulated product); unsupported ones are logged.
+(:test)
+function testFieldsOnDevice(logger as Logger) as Boolean {
+    var line = "";
+    for (var f = 1; f < NoirFields.COUNT; f++) {
+        if (NoirFields.isSupported(f)) {
+            var text = NoirFields.text(f);
+            Test.assert(text.length() > 0);
+            line += f.toString() + "=" + text + " ";
+        } else {
+            line += f.toString() + "=n/a ";
+        }
+    }
+    logger.debug("fields: " + line);
+    var bb = NoirSensors.bodyBattery();
+    Test.assert(NoirSensors.bodyBatteryAvailable() || bb == null);
+    Test.assert(bb == null || (bb >= 0 && bb <= 100));
+    var stress = NoirSensors.stress();
+    Test.assert(stress == null || (stress >= 0 && stress <= 100));
+    return true;
+}
+
+//! Slot settings: defaults, cycling through the supported fields with wrap-around, unsupported ids hidden.
+//! Uses the real Application.Properties; originals restored afterwards.
+(:test)
+function testFieldSettings(logger as Logger) as Boolean {
+    var key = NoirSettings.KEY_FIELD_BOTTOM;
+    var original = Application.Properties.getValue(key);
+    var supported = NoirFields.supportedValues();
+    Application.Properties.setValue(key, supported[supported.size() - 1]);
+    NoirSettings.reload();
+    NoirSettings.cycle(key);
+    var wrapped = NoirSettings.field(key);
+    Application.Properties.setValue(key, 99);
+    NoirSettings.reload();
+    var invalid = NoirSettings.storedField(key);
+    Application.Properties.setValue(key, NoirFields.parse(original, NoirSettings.DEFAULT_FIELD_BOTTOM));
+    NoirSettings.reload();
+    Test.assertEqual(wrapped, NoirFields.NONE);
+    Test.assertEqual(invalid, NoirSettings.DEFAULT_FIELD_BOTTOM);
+    Test.assert(NoirSettings.isFieldKey(NoirSettings.KEY_FIELD_LEFT));
+    Test.assert(!NoirSettings.isFieldKey(NoirSettings.KEY_HOUR_COLOR));
+    Test.assertEqual(NoirSettings.valuesFor(NoirSettings.KEY_FIELD_RIGHT).size(), supported.size());
+    // A stored field the device lacks shows as None.
+    for (var f = 0; f < NoirFields.COUNT; f++) {
+        if (!NoirFields.isSupported(f)) {
+            Application.Properties.setValue(key, f);
+            NoirSettings.reload();
+            var shown = NoirSettings.field(key);
+            Application.Properties.setValue(key, NoirFields.parse(original, NoirSettings.DEFAULT_FIELD_BOTTOM));
+            NoirSettings.reload();
+            Test.assertEqual(shown, NoirFields.NONE);
+            break;
+        }
+    }
     return true;
 }
 
@@ -374,39 +487,5 @@ function testDeviceScreen(logger as Logger) as Boolean {
     if (settings has :requiresBurnInProtection) {
         logger.debug("requiresBurnInProtection " + settings.requiresBurnInProtection.toString());
     }
-    return true;
-}
-
-(:test)
-function testParseFlag(logger as Logger) as Boolean {
-    Test.assertEqual(NoirSettings.parseFlag(true), true);
-    Test.assertEqual(NoirSettings.parseFlag(false), false);
-    Test.assertEqual(NoirSettings.parseFlag(null), true);
-    Test.assertEqual(NoirSettings.parseFlag(0), true);
-    Test.assertEqual(NoirSettings.parseFlag("false"), true);
-    Test.assert(NoirSettings.isFlagKey(NoirSettings.KEY_SHOW_STEPS));
-    Test.assert(NoirSettings.isFlagKey(NoirSettings.KEY_SHOW_BODY_BATTERY));
-    Test.assert(!NoirSettings.isFlagKey(NoirSettings.KEY_TIME_SIZE));
-    return true;
-}
-
-//! Toggles write the Boolean property, refresh the cache and are independent; originals restored afterwards.
-(:test)
-function testToggleFlagsRoundTrip(logger as Logger) as Boolean {
-    var stepsKey = NoirSettings.KEY_SHOW_STEPS;
-    var bbKey = NoirSettings.KEY_SHOW_BODY_BATTERY;
-    var origSteps = NoirSettings.parseFlag(Application.Properties.getValue(stepsKey));
-    var origBb = NoirSettings.parseFlag(Application.Properties.getValue(bbKey));
-    NoirSettings.setFlag(stepsKey, true);
-    NoirSettings.setFlag(bbKey, false);
-    var a = [NoirSettings.showSteps(), NoirSettings.showBodyBattery(),
-        NoirSettings.parseFlag(Application.Properties.getValue(bbKey))] as Array<Boolean>;
-    NoirSettings.setFlag(stepsKey, false);
-    NoirSettings.setFlag(bbKey, true);
-    var b = [NoirSettings.showSteps(), NoirSettings.showBodyBattery(), NoirSettings.flagOf(stepsKey)] as Array<Boolean>;
-    NoirSettings.setFlag(stepsKey, origSteps);
-    NoirSettings.setFlag(bbKey, origBb);
-    Test.assert(a[0] == true && a[1] == false && a[2] == false);
-    Test.assert(b[0] == false && b[1] == true && b[2] == false);
     return true;
 }

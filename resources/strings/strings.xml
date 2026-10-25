@@ -24,8 +24,20 @@
     <string id="ColorPurple">Purple</string>
     <string id="ColorMagenta">Magenta</string>
     <string id="ColorPink">Pink</string>
-    <string id="ShowStepsTitle">Show Steps</string>
-    <string id="ShowBodyBatteryTitle">Show Body Battery</string>
-    <string id="StateOn">On</string>
-    <string id="StateOff">Off</string>
+    <string id="FieldLeftTitle">Left Field</string>
+    <string id="FieldRightTitle">Right Field</string>
+    <string id="FieldBottomTitle">Bottom Field</string>
+    <string id="FieldNone">None</string>
+    <string id="FieldSteps">Steps</string>
+    <string id="FieldBodyBattery">Body Battery</string>
+    <string id="FieldHeartRate">Heart Rate</string>
+    <string id="FieldBattery">Battery</string>
+    <string id="FieldBatteryDays">Battery Days</string>
+    <string id="FieldCalories">Calories</string>
+    <string id="FieldFloors">Floors Climbed</string>
+    <string id="FieldIntensity">Intensity Minutes</string>
+    <string id="FieldNotifications">Notifications</string>
+    <string id="FieldStress">Stress</string>
+    <string id="FieldTemperature">Temperature</string>
+    <string id="FieldDistance">Distance</string>
 </strings>

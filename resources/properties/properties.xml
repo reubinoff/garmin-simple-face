@@ -4,7 +4,9 @@
     <!-- Colours as 0xRRGGBB. Must be one of the list entries in settings.xml / NoirSettings.colorValues(). -->
     <property id="HourColor" type="number">0xFFFFFF</property>
     <property id="MinuteColor" type="number">0xFFFFFF</property>
-    <!-- Show / hide the steps and Body Battery fields (DECISIONS.md D-29). -->
-    <property id="ShowSteps" type="boolean">true</property>
-    <property id="ShowBodyBattery" type="boolean">true</property>
+    <!-- Data field slots (DECISIONS.md D-39): a NoirFields id, 0 = None. Must match settings.xml and
+         source/NoirFields.mc. A field the watch does not support leaves its slot empty. -->
+    <property id="FieldLeft" type="number">1</property>
+    <property id="FieldRight" type="number">2</property>
+    <property id="FieldBottom" type="number">0</property>
 </properties>

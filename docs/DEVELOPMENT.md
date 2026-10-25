@@ -6,25 +6,27 @@ sideloading, CI and publishing. Every technical decision and its official Garmin
 ## Project layout
 
 ```
-manifest.xml            app id, 38 products (fēnix 8 / fēnix 9 / Forerunner, D-36), minApiLevel 3.1.0, permission SensorHistory (Body Battery), languages eng+heb
+manifest.xml            app id, 38 products (fēnix 8 / fēnix 9 / Forerunner, D-36), minApiLevel 3.1.0, permission SensorHistory (Body Battery, stress), languages eng+heb
 monkey.jungle           project.manifest + project.typecheck = strict
 source/NoirTimeApp.mc   AppBase (settings change -> redraw, getSettingsView -> on-watch menu)
 source/NoirSettings.mc  setting keys, values, labels (read/write helpers)
 source/NoirTimeSettingsMenu.mc  on-watch settings menu (Menu2)
-source/NoirTimeView.mc  the watch face (drawing only, incl. the steps / Body Battery vector icons)
-source/NoirBodyBattery.mc  Body Battery reader (SensorHistory.getBodyBatteryHistory, guarded with `has`)
-source/NoirLayout.mc    pure layout / AOD helpers (fit check, outline width, shift, row mask, formatting) - unit-tested
+source/NoirTimeView.mc  the watch face (drawing only, incl. the field icons drawn with Dc primitives)
+source/NoirFields.mc    field ids, labels, support check, value text (NoirFormat) - D-39
+source/NoirSensors.mc   device-specific readers in annotated variants: Body Battery, stress, weather, battery days, floors
+source/NoirLayout.mc    pure layout / AOD helpers (fit check, colon geometry, outline width, shift, row mask) - unit-tested
 source/tests/           Connect IQ (:test) unit tests (excluded from normal builds)
-tests/host/             host tests (Python): resources vs code, model of the drawing code, AOD burn-in harness; stand-in OFL fonts
-resources/              strings, properties.xml (TimeSize, HourColor, MinuteColor, ShowSteps, ShowBodyBattery), settings.xml, launcher icon 65x65
+tests/host/             host tests (Python): resources vs code, model of the drawing code, AOD burn-in harness; stand-in OFL font
+resources/              strings, properties.xml (TimeSize, HourColor, MinuteColor, FieldLeft, FieldRight, FieldBottom), settings.xml, launcher icon 65x65
+resources-round-WxH/    generated Bebas Neue time fonts per screen (scripts/make_fonts.py, D-38)
+assets/fonts/BebasNeue/ source TTF + SIL OFL 1.1 licence
 resources-heb/          Hebrew settings strings
-scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh, run-unit-tests.sh, store-assets.sh
+scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh, run-unit-tests.sh, store-assets.sh, make_fonts.py
 .github/workflows/      build.yml  (static checks + host tests; signed build + unit tests + artifacts)
                         release.yml  ("Build store package": manual; signed .iq + store images on a GitHub Release)
 store/                  store description, release notes, screenshot checklist
-docs/mockups/           design mockups (NOT simulator screenshots) + docs/tools/make_mockups.py
 docs/screenshots/       REAL simulator screenshots (SDK 9.3.0, device files + fonts)
-docs/burn-in-report.md  real burn-in measurements + font-accurate full-day report (tests/host/burnin_report.py)
+docs/burn-in-report.md  real always-on frames + full-day model report (tests/host/burnin_report.py)
 ```
 
 ## 1. Build locally
@@ -54,12 +56,12 @@ scripts/run-simulator.sh        # builds a debug PRG, starts `connectiq`, runs `
 CIQ_DEVICE=fr255s scripts/run-unit-tests.sh   # unit tests on another product (any id in manifest.xml)
 ```
 Check, and take real screenshots into [`screenshots/`](screenshots/):
-1. Time/date/steps centred, nothing cut off by the round edge.
-2. Change `TimeSize`, `HourColor` and `MinuteColor` with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 5 sizes in high power and always-on: nothing may overlap or touch the round edge.
+1. Time/date/fields centred, nothing cut off by the round edge.
+2. Change `TimeSize`, `HourColor`, `MinuteColor` and `FieldLeft` / `FieldRight` / `FieldBottom` (0 - 12, see `source/NoirFields.mc`) with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 5 sizes in high power and always-on: nothing may overlap or touch the round edge.
    On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Noir Time* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
 3. Always-on: digits must be the same size as in step 2, hollow (outline only); switch to always-on with **Settings > Display Mode > Always-On** (SDK 9.3.0 simulator) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
 4. 12h/24h: change the simulated time format.
-5. Steps: the docs name **Simulation -> Activity Data** for simulated activity data; check the steps text with 0, 999, 1 000, 12 345 and 100 000+ values.
+5. Fields: the docs name **Simulation -> Activity Data** for simulated activity data; check steps with 0, 999, 1 000, 12 345 and 100 000+, and every field id in each slot (two rows: the block moves up and stays inside the circle). A field the device lacks must leave its slot empty.
 6. Set the language to Hebrew and look at the date.
 
 ## Tests
@@ -72,17 +74,16 @@ scripts/run-unit-tests.sh                              # Connect IQ unit tests: 
                                                        # waits up to 60 s for the simulator port, 3 attempts (D-35;
                                                        # CIQ_SIM_READY_TIMEOUT, CIQ_SIM_ATTEMPTS). Simulator needs libwebkit2gtk-4.0 (Ubuntu 22.04)
 ```
-The host model uses stand-in OFL fonts by default. With `CIQ_DEVICE_FONTS` pointing at the fonts the SDK manager downloads
-(`device download -d fenix9pro47mm --include-fonts`; not in the repo) it uses the device's own TTFs and matches real simulator frames within 0.1 %.
+The host model draws the time with the real embedded Bebas Neue fonts. For the date / field text it uses a stand-in OFL font by default; with `CIQ_DEVICE_FONTS` pointing at the fonts the SDK manager downloads
+(`device download -d fenix9pro47mm --include-fonts`; not in the repo) it uses the device's own RobotoCondensed-Regular.ttf.
 `tests/host/test_screenshots.py` checks the real screenshots (< 10 % pixels/luminance, same digit size in always-on).
-Last run: `PASSED (passed=17, failed=0, errors=0)`; note that `monkeydo -t` exits 1 even then, the script reads the summary.
+Last run: `PASSED (passed=26, failed=0, errors=0)` on 10 devices (D-41); note that `monkeydo -t` exits 1 even then, the script reads the summary.
 
 ## Battery
 What the face does to keep the drain low (details and doc links: DECISIONS.md D-21): no `onPartialUpdate`, no timers, no background service,
-no sensors, no permissions, system fonts only (XX-Large: one scalable system font from `Graphics.getVectorFont`, looked up once per size change); settings cached and re-read only when they change; date/time strings rebuilt once a minute,
-the steps string only when the count changes; in always-on it draws once a minute with 2.1 - 3.9 % of the pixels lit (simulator; full-day worst case 5.0 %, XX-Large).
-Simulator profiler (D-21, D-26): about 28 / 38 / 55 ms of work per always-on minute for Large / X-Large / XX-Large, about 12 - 15 ms per active frame,
-date/time texts rebuilt once a minute, no timers or background; 11.4 - 12.3 kB of 123.8 kB memory used. XX-Large (scalable font) costs about twice Large in always-on. The battery % per day on the watch has not been measured.
+no sensor listeners, one bitmap time font (graphics pool on API 4+) and the system RobotoCondensed, looked up only when the size or a field changes; settings cached and re-read only when they change; date/time and field strings rebuilt once a minute; in always-on it draws once a minute with 2.5 - 3.6 % of the pixels lit (simulator frames; full-day model worst case 4.3 %, docs/burn-in-report.md).
+Simulator profiler (D-21, D-26; measured BEFORE the D-38 font / D-39 fields, not re-measured - gap G-31): about 28 / 38 / 55 ms of work per always-on minute for Large / X-Large / XX-Large, about 12 - 15 ms per active frame,
+date/time texts rebuilt once a minute, no timers or background; memory now: see D-41. The battery % per day on the watch has not been measured.
 How to measure it yourself:
 1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
 2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load
@@ -131,10 +132,11 @@ Uploading and accepting the developer agreement is an action only you can do und
 ## Changing things
 * Colours / sizes: `resources/settings/settings.xml` (phone) **and** `source/NoirSettings.mc` (watch menu) - keep both lists identical; labels in `resources*/strings/strings.xml`.
   Defaults in `resources/properties/properties.xml` must be one of the list values.
-* Size -> font mapping and the fit check: `fontCandidates()` / `blockFits()` in `source/NoirLayout.mc` (DECISIONS.md D-17, D-20).
+* Time font: edit `SIZE_PERCENT` etc. in `scripts/make_fonts.py`, run `python3 scripts/make_fonts.py` (rewrites `resources-round-*/fonts/`), keep `EDGE_MARGIN` / `OUTLINE_MAX` / `COLON_GAP_PERCENT` equal to `source/NoirLayout.mc` (host test). Fit check: `blockFits()` (D-38).
+* Fields: append a new id in `source/NoirFields.mc` (never renumber), add the label strings (English + Hebrew), the list entry in all three field settings, an icon in `NoirTimeView.drawIcon`, and a `sampleText` width (D-39).
 * Colon colour rule: `NoirLayout.colonColor()` (D-15).
 * Layout / AOD constants: top of `source/NoirLayout.mc` (run the tests after changing them).
-* Steps label, 12/24h handling: `NoirLayout.formatSteps()`, `formatHour()`.
+* Number formats, 12/24h handling: `NoirFormat` in `source/NoirFields.mc`, `NoirLayout.formatHour()`.
 
 ## Licence
-[GPL-3.0](../LICENSE) (GNU General Public License v3.0). Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI); test fonts Rajdhani and Roboto (SIL OFL, `tests/host/fonts/`).
+[GPL-3.0](../LICENSE) (GNU General Public License v3.0). Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI); time font Bebas Neue (SIL OFL 1.1, `assets/fonts/BebasNeue/`); test font Roboto (SIL OFL, `tests/host/fonts/`).

@@ -754,6 +754,158 @@ Older fēnix models (fēnix 5/6/7) were not asked for and are not added.
   `Communications`/`Background`/`Positioning` permission, so the app cannot send data off the watch. `VERIFIED-SDK` (manifest + source
   read; host test checks the permission list).
 
+## D-38 Own time font: Bebas Neue, embedded as bitmap fonts per screen (2026-10-25)
+
+Owner's request: a face of his own (no third-party dependency) that looks better than *Pretty Simple*, whose
+big digits he likes. The system number fonts (D-17 / D-24) are Garmin's and differ per device; an embedded font is the
+only way to get one consistent, chosen look on all 38 products.
+
+**Font: Bebas Neue Regular** by Ryoichi Tsunekawa / Dharma Type, SIL Open Font License 1.1, no Reserved Font Name
+(<https://github.com/dharmatype/Bebas-Neue>, licence text in `assets/fonts/BebasNeue/OFL.txt`).
+* Why: a tall, condensed, all-caps display face with flat terminals - the "big clean digits" look the owner asked for. Being
+  condensed, the digits can be very tall in the same round screen (XX-Large on 454 px: 155 px digit height). Its digits are
+  tabular (all ten have the same advance, e.g. 85 px in `resources-round-454x454/fonts/time4.fnt`), so the time does not jump
+  left and right from minute to minute.
+* Licence fit: OFL 1.1 allows embedding and redistributing the font in software, also commercially, as long as the font is not
+  sold on its own and the licence goes with it (<https://openfontlicense.org/>). The FSF lists the OFL as a free licence
+  compatible with the GPL for this use (<https://www.gnu.org/licenses/license-list.html#SILOFL>). The OFL text sits next to the
+  TTF; README and store text name the font and the licence.
+* Rejected: shipping a TTF (Connect IQ has no runtime TTF loading for apps); vector fonts by name (`getVectorFont` only offers the
+  faces the device has, API 4.2.1+, not the API 3.x Forerunners).
+
+**How it is embedded.**
+* Connect IQ custom fonts are BMFont files (text `.fnt` + PNG page) declared in a `<fonts>` resource
+  (<https://developer.garmin.com/connect-iq/core-topics/resources/> "Fonts"; FAQ "How do I use custom fonts").
+  `scripts/make_fonts.py` (Pillow / FreeType, mypy-clean) writes them for every round resolution of the products
+  (208, 218, 240, 260, 280, 360, 390, 416, 454, 466): five fonts per screen, `TimeFont0..4` = Small..XX-Large, digits `0-9` only
+  (the colon is two squares drawn with `fillRectangle`), `antialias="true"`, 8-bit page <= 512 px wide.
+* Sizing: the XX-Large digit height is the largest at which "00:00" (+ colon gap + always-on outline) fits inside the round
+  screen minus `EDGE_MARGIN` - the same formula as `NoirLayout.blockFits`; the other sizes are 56 / 68 / 80 / 90 % of it.
+  `lineHeight` = digit height + 2 (`TIME_LINE_EXTRA`) and glyphs are cropped to the digits, so `Dc.getFontHeight` is the digit
+  height and the layout centres the ink, not an em box. The generator is deterministic (re-running gives identical files,
+  checked) and shares `EDGE_MARGIN`, `OUTLINE_MAX`, `COLON_GAP_PERCENT` with the Monkey C code (host test).
+* Selection: `resources-round-WxH/fonts/` qualifiers (<https://developer.garmin.com/connect-iq/core-topics/build-configuration/>),
+  so every device builds only the fonts of its own screen.
+* Loading: `WatchUi.loadResource(Rez.Fonts.TimeFontN)` in `updateLayout` only (size / field change). Starting at the selected size,
+  smaller fonts are tried until the block fits with the smallest field-row font; only the chosen font stays referenced.
+  From API 4.0.0 fonts load into the **graphics pool**, separate from the app heap, and are handed back as a reference
+  (<https://developer.garmin.com/connect-iq/core-topics/graphics/> "Graphics Pool"); before 4.0.0 they load into the heap.
+* Line heights (px, Small..XX-Large): 208: 37/45/53/59/66, 218: 40/48/56/63/70, 240: 44/53/62/70/78, 260: 49/59/69/77/86,
+  280: 52/63/74/83/93, 360: 69/83/98/110/122, 390: 75/91/106/119/133, 416: 80/97/114/128/143, 454: 88/107/126/141/157,
+  466: 91/110/129/144/161 (simulator unit test `testTimeFontsOnDevice` checks each on 10 devices).
+* Memory: see D-41.
+
+**Look changes that come with it.** Colon = two squares (`COLON_DOT_PERCENT` 15 % of the digit height, offset 22 %), which matches
+Bebas's flat geometry better than the old circles; outlined squares in always-on. The always-on style (outline dilation, shift,
+row mask, D-19) is unchanged and works the same with the bitmap font.
+
+## D-39 Three configurable field slots (2026-10-25)
+
+Replaces the two show/hide toggles of D-29. Three slots - **left**, **right** (row under the time) and **bottom** (second row) -
+each show one field or nothing. The date stays above the time. If left and right are both empty, the bottom field moves up to
+the first row. A second row shifts the whole block up (`NoirLayout.blockShift`) so it stays centred.
+
+| id | field | API | since | permission | not on | default |
+|---|---|---|---|---|---|---|
+| 0 | None | - | - | - | - | bottom |
+| 1 | Steps | `ActivityMonitor.Info.steps` | 1.0.0 | none | - | **left** |
+| 2 | Body Battery | `SensorHistory.getBodyBatteryHistory` | 3.3.0 | SensorHistory | fr645, fr645m, fr935 | **right** |
+| 3 | Heart rate | `Activity.Info.currentHeartRate`, else newest `ActivityMonitor.getHeartRateHistory` sample | 1.0.0 / 1.2.1 | none | - | off |
+| 4 | Battery % | `System.Stats.battery` | 1.0.0 | none | - | off |
+| 5 | Battery days | `System.Stats.batteryInDays` | 3.3.0 | none | API 3.x products (fr245/245m/745/945/945lte/55/645/645m/935) | off |
+| 6 | Calories | `ActivityMonitor.Info.calories` | 1.0.0 | none | - | off |
+| 7 | Floors | `ActivityMonitor.Info.floorsClimbed` | 2.1.0 | none | fr245, fr245m, fr55, fr70 | off |
+| 8 | Intensity minutes (week) | `ActivityMonitor.Info.activeMinutesWeek.total` | 2.1.0 | none | - | off |
+| 9 | Notifications | `System.DeviceSettings.notificationCount` | 1.2.0 | none | - | off |
+| 10 | Stress | `SensorHistory.getStressHistory` | 3.3.0 | SensorHistory | fr645, fr645m, fr935 | off |
+| 11 | Temperature | `Weather.getCurrentConditions().temperature` (°C, shown in the user's unit) | 3.2.0 | none | fr645, fr645m, fr935 | off |
+| 12 | Distance (today) | `ActivityMonitor.Info.distance` (cm, shown in km / mi) | 1.0.0 | none | - | off |
+
+Sources (`VERIFIED-DOC`, SDK 9.3.0 API docs, "Since" and "Supported Devices" checked for all 38 products):
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/ActivityMonitor/Info.html>,
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/ActivityMonitor.html>,
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/SensorHistory.html>,
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/Activity/Info.html>,
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/System/Stats.html>,
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/System/DeviceSettings.html>,
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/Weather.html>,
+permissions: <https://developer.garmin.com/connect-iq/core-topics/manifest-and-permissions/>.
+
+* **No new permission.** Only Body Battery and stress need one (SensorHistory), which the app already had (D-27). Nothing that
+  needs Positioning / Communications / UserProfile was added; no field is off "because of a permission". The Sensor History
+  reassurance (D-37) now reads "only to display Body Battery and stress".
+* **Unsupported = hidden.** Strict `monkeyc` rejects a symbol a device lacks even behind `has`, so the device-specific APIs are in
+  annotated variants (`source/NoirSensors.mc`): `(:hist33)/(:nohist33)` (Body Battery, stress, weather - renamed from
+  `bodybattery`), `(:ciq4)/(:ciq3)` (battery days), `(:floors)/(:nofloors)`. `monkey.jungle` `excludeAnnotations` (the variants
+  DROPPED): base `ciq3;nohist33;nofloors`; fr245/fr245m/fr55 `ciq4;nohist33;floors`; fr745/fr945/fr945lte `ciq4;nohist33;nofloors`;
+  fr645/fr645m/fr935 `ciq4;hist33;nofloors`; fr70 `ciq3;nohist33;floors`. At run time each also checks `has`. `NoirSettings.field(key)` returns None for
+  an unsupported stored value, and the menu / phone list offers only supported fields on the watch menu
+  (`NoirFields.supportedValues`); the phone list shows all 13 (Garmin Connect settings are not per device) and an unsupported
+  choice simply leaves the slot empty.
+* **Reading.** Values are read once per minute (and on wake), not per frame; null / invalid values show `--`.
+  Steps, calories, intensity get thousands separators; temperature and distance follow `DeviceSettings.temperatureUnits` /
+  `distanceUnits`.
+* **Icons.** Steps and Body Battery icons kept (D-28 / D-34). New ones drawn with `Dc` primitives (API 1.0.0 / 1.2.0): heart, battery
+  (level bar; battery days = three cells), flame, stairs, bolt, speech bubble, zig-zag (stress), thermometer, map pin.
+* **Settings UX.** `properties.xml`: `FieldLeft` 1, `FieldRight` 2, `FieldBottom` 0 (number); `settings.xml`: three list settings
+  ("Left field", "Right field", "Bottom field") with the 13 entries; on the watch, three Menu2 items that cycle through the supported
+  fields with the current choice as sub-label (same pattern as size / colours, D-16). English + Hebrew strings. Old
+  `ShowSteps` / `ShowBodyBattery` properties are no longer read (an upgrade starts from the defaults steps + Body Battery, which is
+  what both toggles defaulted to).
+
+## D-40 Companion text font: RobotoCondensed for the date and fields (2026-10-25)
+
+* Date and field values use `Graphics.getVectorFont({:face => "RobotoCondensedRegular", :size => px})` (API 4.2.1,
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics.html>): date at 10 % of the screen width, field rows at
+  10 / 9 / 8 / 7 % (largest that fits). Measured in the simulator: `getFontHeight` = requested px (45 -> 45 on 454 px).
+  A condensed face next to Bebas reads as one design and leaves room for two fields per row.
+* The date is upper-case (`String.toUpper`, API 1.0.0) to match the all-caps digits, but only for languages whose month / day
+  names are basic Latin (`NoirLayout.isBasicLatin`: eng, deu, fre, ita, spa, por, dut, dan, swe, nob, fin). Other languages
+  (Hebrew, Russian, Chinese, ...) keep `FONT_SMALL` in the system's own case, because the coverage of the device's
+  RobotoCondensed for those scripts is not documented.
+* Fallback: no `getVectorFont` (API < 4.2.1, the `(:ciq3)` build) or a null font -> `FONT_SMALL` for the date and
+  `FONT_SMALL / FONT_TINY / FONT_XTINY` for the rows (the D-28 behaviour).
+
+## D-41 Memory and build check after D-38 - D-40 (2026-10-25)
+
+Strict build `monkeyc -d <id> -f monkey.jungle -l 3 -w -r` for all 38 products of `manifest.xml`: **rc 0, 0 warnings, 0 errors on
+every product**; `monkeyc -e` (store package, all products): 0 warnings, 1.85 MB. PRG sizes 30.7 kB (260 px MIP) - 53.8 kB
+(fr70 / fr165); 46.4 kB on 454 px.
+
+Memory (simulator status bar "used / available", watch-face app, active mode, fields shown in parentheses):
+
+| tier | device (size, fields) | used / available | headroom |
+|---|---|---|---|
+| AMOLED 454, API 5 | fenix9pro47mm (XX-Large, steps + BB) | 22.7 / 123.8 kB | 101 kB |
+| AMOLED 454, 3 fields | fenix9pro47mm (Large, calories / floors / temperature) | 22.8 / 123.8 kB | 101 kB |
+| AMOLED 466 | fenix9pro51mm (XX-Large, steps + BB + HR) | 22.8 / 123.8 kB | 101 kB |
+| AMOLED 416 | fenix843mm (XX-Large) | 22.7 / 123.8 kB | 101 kB |
+| AMOLED 454 Forerunner | fr970 (Large, HR + battery) | 22.7 / 123.8 kB | 101 kB |
+| AMOLED 390 | fr165 (Medium, 3 fields) | 22.6 / 123.8 kB | 101 kB |
+| AMOLED 360 | fr265s (X-Large) | 22.5 / 123.8 kB | 101 kB |
+| MIP 260 | fenix9prosolar47mm (XX-Large) | 22.8 / 123.8 kB | 101 kB |
+| MIP 280 | fenix8solar51mm (Large, 3 fields) | 22.8 / 123.8 kB | 101 kB |
+| MIP 218 | fr255s (XX-Large) | 22.2 / 123.8 kB | 102 kB |
+| MIP 240, API 3.3 | fr245 (XX-Large) | 29.3 / 91.8 kB | 62.5 kB |
+| MIP 240, API 3.1 | fr645 (Medium, steps + HR + calories) | 27.7 / 91.8 kB | 64.1 kB |
+| MIP 208, API 3.4 | fr55 (Large) | 27.2 / 91.8 kB | 64.6 kB |
+
+* On API 4+ the loaded `TimeFontN` lives in the graphics pool (D-38), so the app heap barely changes with the size; on the API 3.x
+  products (91.8 kB limit) the font is in the heap: the simulator unit test `testTimeFontsOnDevice` measured
+  `System.getSystemStats().usedMemory` deltas of +0.4 - 1.8 kB per loaded font (fr245 / fr645 TimeFont0-4: +1824 / +520 / +504 /
+  +424 / +384 B; fr55: +968 / +144 / +384 / +200 / +632 B). Only ONE time font is referenced at a time, and only the device's own
+  resolution is compiled in, so five sizes per screen cost flash (52 - 80 kB of font files per resolution, in the PRG/IQ), not RAM.
+  Worst case seen: 29.3 kB of 91.8 kB (32 %), so no size had to be scaled down for memory.
+* Simulator unit tests (`scripts/run-unit-tests.sh`, 26 tests incl. font loading, field lists, field settings per device):
+  **PASSED 26/26** on fenix9pro47mm, fenix9pro51mm, fenix843mm, fenix9prosolar47mm, fr165, fr265s, fr970, fr245, fr55, fr645.
+* Host tests: 34 tests OK, with and without `CIQ_DEVICE_FONTS` (+ XSD validation); `mypy tests/host scripts/make_fonts.py` clean;
+  `ruff check tests/host scripts` - all checks passed (HEAD had 21 findings; none new, the touched files were cleaned).
+* Always-on: real frames 2.5 - 3.6 % pixels on, 1.6 - 2.8 % luminance; full-day model worst case 4.3 % / 3.4 %, longest run
+  2 min (`docs/burn-in-report.md`) - inside the < 10 % / 3 min limits of D-19.
+* Screenshots (real simulator, SDK 9.3.0): `docs/screenshots/active_*.png` / `aod_*.png` (fenix9pro47mm, 454 px: five sizes, colour
+  pairs, field configurations) and `docs/screenshots/devices/` (466 / 416 / 390 / 360 AMOLED with always-on, 280 / 260 / 240 / 218 /
+  208 MIP); quantised to 256 colours, each < 31 kB. The old D-26 `burnin24h_*` / `profiler_*` frames were removed (old font).
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -781,6 +933,14 @@ Older fēnix models (fēnix 5/6/7) were not asked for and are not added.
 | G-22 | Colour mapping: 64-colour MIP palette, 8-colour fr55 palette | some of the 16 colours map to the same device colour | look on the watch; consider a reduced list later |
 | G-23 | On-device settings on fr645m (API 3.2); fr645 / fr935 (API 3.1) have no `getSettingsView` | not run in the simulator menu | phone settings work on all |
 | G-24 | Battery cost on the other 37 products | profiler only run on fenix9pro47mm | wear it |
+| G-25 | Coverage of the device's RobotoCondensed for every glyph of the 11 upper-case languages | simulator (English) only | look at the date in each language on a watch (D-40) |
+| G-26 | Freshness of stress / temperature (newest history sample, Weather update rate) | API docs give no update interval | compare with the native widgets on a watch |
+| G-27 | Heap cost of the bitmap time font on a real API 3.x watch (fr245 / fr645 / fr55) | simulator: +0.4 - 1.8 kB, 29.3 / 91.8 kB used | check with the profiler on a watch |
+| G-28 | Whether a watch face needs the SensorHistory permission for Body Battery / stress at all | kept as in D-27 | none needed unless Garmin says otherwise |
+| G-29 | Steps (and calories, distance) show 0 in the simulator frames | simulator activity data not set (as G-19) | set *Simulation -> Activity Data* or check on the watch |
+| G-30 | No side-by-side comparison with *Pretty Simple* on the same watch | only its store pictures were seen | install both on the watch and compare |
+| G-31 | Profiler numbers (D-21 / D-26) and the 24 h burn-in heat-map frames were taken with the old system fonts | removed with the old screenshots | re-run the profiler and the heat map with the new font |
+| G-32 | D-29's two show/hide toggles are superseded by D-39 | old `ShowSteps` / `ShowBodyBattery` values are ignored after the upgrade | none |
 | G-17 | CI `build` job / `release.yml` (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
 ## What WAS verified in this session
@@ -809,3 +969,7 @@ Older fēnix models (fēnix 5/6/7) were not asked for and are not added.
   warnings. 25/25 simulator unit tests on 12 devices (D-36). 29 host tests pass (device fonts + XSD, including the `launcher-icons`
   XML); `mypy` clean; `ruff` reports no new findings (the 23 it lists with ruff's current defaults are in untouched lines). 15 device
   screenshots in `docs/screenshots/devices/`.
+* After D-38 - D-41 (2026-10-25): Bebas Neue time fonts for 10 resolutions (deterministic generator), 13 field choices in 3 slots.
+  Strict build with `-l 3 -w -r` for each of the 38 IDs and the `.iq`: no warnings, no errors. 26/26 simulator unit tests on 10
+  devices. 34 host tests OK (device fonts + XSD, and without); `mypy` clean; `ruff` all checks passed. 54 new real screenshots
+  (17 active + 17 always-on on 454 px, 20 on other devices) and a new burn-in report; memory per tier in D-41.

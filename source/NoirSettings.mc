@@ -14,9 +14,14 @@ module NoirSettings {
     const KEY_TIME_SIZE = "TimeSize";
     const KEY_HOUR_COLOR = "HourColor";
     const KEY_MINUTE_COLOR = "MinuteColor";
-    // On/off fields (D-29): Boolean properties, default true.
-    const KEY_SHOW_STEPS = "ShowSteps";
-    const KEY_SHOW_BODY_BATTERY = "ShowBodyBattery";
+    // Data field slots (D-39): Number properties holding a NoirFields id.
+    const KEY_FIELD_LEFT = "FieldLeft";
+    const KEY_FIELD_RIGHT = "FieldRight";
+    const KEY_FIELD_BOTTOM = "FieldBottom";
+    // Defaults = the fields of version 1.0 (steps left, Body Battery right), bottom slot empty.
+    const DEFAULT_FIELD_LEFT = 1;     // NoirFields.STEPS
+    const DEFAULT_FIELD_RIGHT = 2;    // NoirFields.BODY_BATTERY
+    const DEFAULT_FIELD_BOTTOM = 0;   // NoirFields.NONE
 
     const SIZE_SMALL = 0;
     const SIZE_MEDIUM = 1;
@@ -30,8 +35,9 @@ module NoirSettings {
     var _timeSize as Number = SIZE_MEDIUM;
     var _hourColor as Number = DEFAULT_COLOR;
     var _minuteColor as Number = DEFAULT_COLOR;
-    var _showSteps as Boolean = true;
-    var _showBodyBattery as Boolean = true;
+    var _fieldLeft as Number = DEFAULT_FIELD_LEFT;
+    var _fieldRight as Number = DEFAULT_FIELD_RIGHT;
+    var _fieldBottom as Number = DEFAULT_FIELD_BOTTOM;
 
     //! The 16 time colours (24-bit 0xRRGGBB as Dc.setColor takes them), same order and values as the lists in settings.xml.
     function colorValues() as Array<Number> {
@@ -79,18 +85,11 @@ module NoirSettings {
         return DEFAULT_COLOR;
     }
 
-    //! Parses a stored on/off flag: anything that is not a Boolean becomes true (field shown).
-    function parseFlag(value as Object or Null) as Boolean {
-        if (value instanceof Boolean) {
-            return value as Boolean;
-        }
-        return true;
-    }
-
     //! Reads all properties (Properties.getValue, API 2.4.0) into the cache.
     function reload() as Void {
-        _showSteps = parseFlag(Application.Properties.getValue(KEY_SHOW_STEPS));
-        _showBodyBattery = parseFlag(Application.Properties.getValue(KEY_SHOW_BODY_BATTERY));
+        _fieldLeft = NoirFields.parse(Application.Properties.getValue(KEY_FIELD_LEFT), DEFAULT_FIELD_LEFT);
+        _fieldRight = NoirFields.parse(Application.Properties.getValue(KEY_FIELD_RIGHT), DEFAULT_FIELD_RIGHT);
+        _fieldBottom = NoirFields.parse(Application.Properties.getValue(KEY_FIELD_BOTTOM), DEFAULT_FIELD_BOTTOM);
         _timeSize = parseSize(Application.Properties.getValue(KEY_TIME_SIZE));
         _hourColor = parseColor(Application.Properties.getValue(KEY_HOUR_COLOR));
         _minuteColor = parseColor(Application.Properties.getValue(KEY_MINUTE_COLOR));
@@ -118,43 +117,48 @@ module NoirSettings {
         return _timeSize;
     }
 
-    function showSteps() as Boolean {
+    //! Field id stored for a slot (may be one this device does not support; see field()).
+    function storedField(key as String) as Number {
         ensureLoaded();
-        return _showSteps;
+        if (key.equals(KEY_FIELD_LEFT)) {
+            return _fieldLeft;
+        }
+        return key.equals(KEY_FIELD_RIGHT) ? _fieldRight : _fieldBottom;
     }
 
-    function showBodyBattery() as Boolean {
-        ensureLoaded();
-        return _showBodyBattery;
+    //! Field shown in a slot: the stored one, or NONE when this device does not support it (D-39).
+    function field(key as String) as Number {
+        var id = storedField(key);
+        return NoirFields.isSupported(id) ? id : NoirFields.NONE;
     }
 
-    function flagOf(key as String) as Boolean {
-        return key.equals(KEY_SHOW_STEPS) ? showSteps() : showBodyBattery();
-    }
-
-    function isFlagKey(key as String) as Boolean {
-        return key.equals(KEY_SHOW_STEPS) || key.equals(KEY_SHOW_BODY_BATTERY);
-    }
-
-    //! Stores an on/off flag (Properties.setValue, API 2.4.0) and refreshes the cache.
-    function setFlag(key as String, enabled as Boolean) as Void {
-        Application.Properties.setValue(key, enabled);
-        reload();
+    function isFieldKey(key as String) as Boolean {
+        return key.equals(KEY_FIELD_LEFT) || key.equals(KEY_FIELD_RIGHT) || key.equals(KEY_FIELD_BOTTOM);
     }
 
     function valueOf(key as String) as Number {
         if (key.equals(KEY_TIME_SIZE)) {
             return timeSize();
         }
+        if (isFieldKey(key)) {
+            return field(key);
+        }
         return key.equals(KEY_HOUR_COLOR) ? hourColor() : minuteColor();
     }
 
-    //! Values and labels for a setting key (used by the on-device menu).
+    //! Values and labels for a setting key (used by the on-device menu). Field slots offer only the fields this
+    //! device supports.
     function valuesFor(key as String) as Array<Number> {
+        if (isFieldKey(key)) {
+            return NoirFields.supportedValues();
+        }
         return key.equals(KEY_TIME_SIZE) ? sizeValues() : colorValues();
     }
 
     function labelsFor(key as String) as Array<ResourceId> {
+        if (isFieldKey(key)) {
+            return NoirFields.supportedLabels();
+        }
         return key.equals(KEY_TIME_SIZE) ? sizeLabels() : colorLabels();
     }
 

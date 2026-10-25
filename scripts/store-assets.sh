@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds store images from the REAL simulator screenshots in docs/screenshots/ (never from docs/mockups/).
+# Builds store images from the REAL simulator screenshots in docs/screenshots/.
 #
 #   scripts/store-assets.sh [out_dir]      (default: store-assets)
 #
