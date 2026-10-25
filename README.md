@@ -40,9 +40,6 @@ Connect the watch over USB, copy `build/NoirTime.prg` to the watch's `GARMIN/APP
 - [DECISIONS.md](DECISIONS.md): every technical decision, with the Garmin docs it is based on
 - [Screenshots](docs/screenshots/) and the [burn-in report](docs/burn-in-report.md)
 
-> **בעברית:** פני שעון שחורים ונקיים ל-fēnix 9 Pro 47mm: שעה גדולה בצבעים נפרדים לשעות ולדקות, תאריך, צעדים ו-Body Battery
-> (אפשר להסתיר), 5 גדלים, 16 צבעים ומצב Always-On. ההגדרות זמינות בשעון ובאפליקציית Garmin Connect, גם בעברית.
-
 ## License
 
 Noir Time © 2026 reubinoff is licensed under
