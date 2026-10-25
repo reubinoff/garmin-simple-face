@@ -18,7 +18,7 @@ mappings = ("line",) if m.DEVICE_FONTS else ("line", "digit")
 rows = []
 for mapping in mappings:
     for size in m.SIZES:
-        tf, _ = m.choose_time_font(size, mapping)
+        tf = m.choose_time_font(size, mapping)[0]
         lit, lum, run = m.burn_in_run(size, 0xFFFFFF, 0xFFFFFF, 0, minutes, mapping=mapping, steps=88888)
         rows.append((mapping, m.SIZE_NAMES[size], tf.name, lit, lum, run))
         print(rows[-1], flush=True)

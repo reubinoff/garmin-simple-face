@@ -24,4 +24,8 @@
     <string id="ColorPurple">Purple</string>
     <string id="ColorMagenta">Magenta</string>
     <string id="ColorPink">Pink</string>
+    <string id="ShowStepsTitle">Show Steps</string>
+    <string id="ShowBodyBatteryTitle">Show Body Battery</string>
+    <string id="StateOn">On</string>
+    <string id="StateOff">Off</string>
 </strings>

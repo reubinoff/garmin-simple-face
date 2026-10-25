@@ -25,8 +25,10 @@ def strings(path):
 class ResourcesTest(unittest.TestCase):
     def setUp(self):
         self.settings = ET.parse(os.path.join(ROOT, "resources/settings/settings.xml")).getroot()
-        self.props = {p.get("id"): int(p.text.strip(), 0)
-                      for p in ET.parse(os.path.join(ROOT, "resources/properties/properties.xml")).getroot()}
+        root = ET.parse(os.path.join(ROOT, "resources/properties/properties.xml")).getroot()
+        self.prop_types = {p.get("id"): p.get("type") for p in root}
+        self.props = {p.get("id"): (p.text.strip() == "true") if p.get("type") == "boolean" else int(p.text.strip(), 0)
+                      for p in root}
         self.mc = read("source", "NoirSettings.mc")
 
     def setting(self, key):
@@ -64,8 +66,23 @@ class ResourcesTest(unittest.TestCase):
         labels = re.findall(r"Rez\.Strings\.(Size\w+)", re.search(r"function sizeLabels\(\).*?\];", self.mc, re.S).group(0))
         self.assertEqual([t.replace("@Strings.", "") for _, t in entries], labels)
 
+    def test_show_hide_toggles(self):
+        """ShowSteps / ShowBodyBattery: Boolean properties defaulting to true, boolean settings (D-29)."""
+        for key in ("ShowSteps", "ShowBodyBattery"):
+            self.assertEqual(self.prop_types[key], "boolean", key)
+            self.assertIs(self.props[key], True, key)
+            types = [c.get("type") for s in self.settings.iter("setting") if s.get("propertyKey") == "@Properties." + key
+                     for c in s.iter("settingConfig")]
+            self.assertEqual(types, ["boolean"], key)
+        self.assertIn('const KEY_SHOW_STEPS = "ShowSteps";', self.mc)
+        self.assertIn('const KEY_SHOW_BODY_BATTERY = "ShowBodyBattery";', self.mc)
+        menu = read("source", "NoirTimeSettingsMenu.mc")
+        self.assertEqual(menu.count("new WatchUi.ToggleMenuItem("), 2)
+
     def test_defaults_are_list_values(self):
         for key, default in self.props.items():
+            if self.prop_types[key] == "boolean":
+                continue
             self.assertIn(default, [v for v, _ in self.setting(key)], key)
         self.assertEqual(self.props["TimeSize"], 1)  # Medium
         self.assertEqual(self.props["HourColor"], 0xFFFFFF)
@@ -90,7 +107,8 @@ class ResourcesTest(unittest.TestCase):
         self.assertIn('type="watchface"', m)
         self.assertEqual(re.findall(r'<iq:product id="([^"]+)"', m), ["fenix9pro47mm"])
         self.assertEqual(sorted(re.findall(r"<iq:language>(\w+)</iq:language>", m)), ["eng", "heb"])
-        self.assertNotRegex(m, r"<iq:uses-permission")
+        # Exactly one permission: SensorHistory, for SensorHistory.getBodyBatteryHistory (D-27).
+        self.assertEqual(re.findall(r'<iq:uses-permission id="([^"]+)"', m), ["SensorHistory"])
 
     def test_no_keys_or_secrets_tracked(self):
         for f in glob.glob(os.path.join(ROOT, "**", "*"), recursive=True):

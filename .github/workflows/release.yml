@@ -1,0 +1,126 @@
+name: Build store package
+
+# Manual button (Actions -> "Build store package" -> Run workflow). Builds, signs, tests and packages the watch face and
+# attaches NoirTime.iq, NoirTime.prg and store images to a GitHub Release. It does NOT upload to the Connect IQ Store:
+# Garmin documents no publish API or CLI; the .iq is uploaded by hand in the Developer Dashboard
+# (https://developer.garmin.com/connect-iq/submit-an-app/, DECISIONS.md D-31).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Store version (must equal the version attribute in manifest.xml; max 20 characters)'
+        required: true
+        type: string
+      whats_new:
+        description: "What's New / release notes (optional)"
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write   # create the GitHub Release
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04   # the SDK 9.3.0 simulator needs libwebkit2gtk-4.0 (see build.yml)
+    environment: publish
+    env:
+      GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
+      GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+      CIQ_AGREEMENT_HASH: ${{ secrets.CIQ_AGREEMENT_HASH }}
+      CIQ_DEVELOPER_KEY_B64: ${{ secrets.CIQ_DEVELOPER_KEY_B64 }}
+      # inputs go through env, never straight into shell code
+      INPUT_VERSION: ${{ inputs.version }}
+      INPUT_WHATS_NEW: ${{ inputs.whats_new }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Required secrets are set
+        run: |
+          missing=0
+          for v in GARMIN_USERNAME GARMIN_PASSWORD CIQ_AGREEMENT_HASH CIQ_DEVELOPER_KEY_B64; do
+            if [ -z "${!v}" ]; then echo "::error::Secret $v is missing in the 'publish' environment"; missing=1; fi
+          done
+          exit $missing
+
+      - name: Version input equals manifest.xml
+        run: |
+          manifest_version=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ns = {"iq": "http://www.garmin.com/xml/connectiq"}
+          app = ET.parse("manifest.xml").getroot().find("iq:application", ns)
+          print(app.get("version", ""))
+          PY
+          )
+          if [ "${#INPUT_VERSION}" -gt 20 ]; then
+            echo "::error::Version '$INPUT_VERSION' is longer than 20 characters"; exit 1
+          fi
+          if [ "$manifest_version" != "$INPUT_VERSION" ]; then
+            echo "::error::Version mismatch: input '$INPUT_VERSION', manifest.xml '$manifest_version'. Update the version attribute of <iq:application> in manifest.xml or rerun with the manifest version."
+            exit 1
+          fi
+          echo "Version $INPUT_VERSION matches manifest.xml"
+
+      # The Connect IQ docs require Java 11 or higher; the SDK was run with Temurin 21 when this project was created.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Install Connect IQ SDK 9.3.0 and the fenix9pro47mm device files
+        run: scripts/install-sdk.sh
+
+      - name: Write developer key (never printed, never uploaded)
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$CIQ_DEVELOPER_KEY_B64" | base64 -d > "$RUNNER_TEMP/keys/developer_key.der"
+          chmod 600 "$RUNNER_TEMP/keys/developer_key.der"
+          echo "CIQ_DEVELOPER_KEY_PATH=$RUNNER_TEMP/keys/developer_key.der" >> "$GITHUB_ENV"
+
+      - name: Build PRG + IQ (strict type check, warnings on)
+        run: scripts/build.sh --out build
+
+      - name: Connect IQ unit tests (monkeyc -t, simulator under xvfb, monkeydo -t)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.0-37 libsoup2.4-1 libjpeg8 libusb-1.0-0
+          xvfb-run -a scripts/run-unit-tests.sh
+
+      - name: Store images (cover 500x500 sRGB + screenshots under 150 KB; warnings only)
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -qq imagemagick || echo "::warning::ImageMagick install failed - no store images"
+          scripts/store-assets.sh store-assets
+
+      - name: Create GitHub Release v${{ inputs.version }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          if [ -n "$INPUT_WHATS_NEW" ]; then printf '%s\n' "$INPUT_WHATS_NEW" > "$notes"
+          else printf 'Noir Time %s for the fenix 9 Pro 47mm. Store package (NoirTime.iq), sideload build (NoirTime.prg) and store images.\n' "$INPUT_VERSION" > "$notes"; fi
+          files=(build/NoirTime.iq build/NoirTime.prg)
+          if compgen -G "store-assets/*" > /dev/null; then files+=(store-assets/*); fi
+          gh release create "v$INPUT_VERSION" "${files[@]}" --title "Noir Time $INPUT_VERSION" --notes-file "$notes" --target "$GITHUB_SHA"
+
+      - name: Summary - upload to the store by hand
+        if: always()
+        run: |
+          {
+            echo "## Noir Time $INPUT_VERSION - store package"
+            echo
+            echo "Upload to the Connect IQ Store is **manual** (Garmin has no publish API or CLI)."
+            echo "Garmin Developer Dashboard: https://apps.garmin.com/developer/dashboard"
+            echo
+            echo "- [ ] Download **NoirTime.iq** from the release [v$INPUT_VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$INPUT_VERSION)"
+            echo "- [ ] Dashboard: **Submit an App** (first version) or open Noir Time and upload a new version"
+            echo "- [ ] Type exactly the same version: \`$INPUT_VERSION\`"
+            echo "- [ ] Attach \`cover.png\` and the \`screenshot_*\` images from the release"
+            echo "- [ ] Paste the What's New text and **submit for review**"
+            echo
+            echo "Every update must be signed with the same developer key (secret CIQ_DEVELOPER_KEY_B64) - keep a backup of it."
+          } >> "$GITHUB_STEP_SUMMARY"

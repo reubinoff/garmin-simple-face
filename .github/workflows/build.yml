@@ -38,10 +38,11 @@ jobs:
   build:
     needs: static-checks
     runs-on: ubuntu-22.04
+    environment: publish
     env:
       GARMIN_USERNAME: ${{ secrets.GARMIN_USERNAME }}
       GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
-      CIQ_AGREEMENT_HASH: ${{ vars.CIQ_AGREEMENT_HASH }}
+      CIQ_AGREEMENT_HASH: ${{ secrets.CIQ_AGREEMENT_HASH }}
       CIQ_DEVELOPER_KEY_B64: ${{ secrets.CIQ_DEVELOPER_KEY_B64 }}
     steps:
       - uses: actions/checkout@v7

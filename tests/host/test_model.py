@@ -16,6 +16,9 @@ PORT = {
     "colonColor": m.colon_color, "insideCircle": m.inside_circle, "blockFits": m.block_fits,
     "digitHalfHeight": m.digit_half_height,
     "maskFirstRow": m.mask_first_row,
+    "iconHeight": m.icon_height, "stepsIconWidth": m.steps_icon_width, "bodyBatteryIconWidth": m.body_battery_icon_width,
+    "iconGap": m.icon_gap, "groupGap": m.group_gap, "statsRowWidth": m.stats_row_width,
+    "formatBodyBattery": m.format_body_battery,
 }
 
 
@@ -69,9 +72,25 @@ class PortParityTest(unittest.TestCase):
     def test_layout_fits_for_every_size_and_mapping(self):
         for mapping in ("line", "digit"):
             for size in m.SIZES:
-                tf, sf = m.choose_time_font(size, mapping)
-                pct = m.L["DIGIT_HALF_PERCENT_CONDENSED" if tf.condensed else "DIGIT_HALF_PERCENT_NUMBER"]
-                self.assertTrue(m.fits(tf, sf, pct), (mapping, size, tf.name))
+                for steps, bb in ((True, True), (True, False), (False, True), (False, False)):
+                    tf, sf, stf = m.choose_time_font(size, mapping, steps, bb)
+                    pct = m.L["DIGIT_HALF_PERCENT_CONDENSED" if tf.condensed else "DIGIT_HALF_PERCENT_NUMBER"]
+                    self.assertTrue(m.fits(tf, sf, pct, stf, steps, bb), (mapping, size, tf.name, stf.name))
+
+    def test_toggles_never_change_the_time_font(self):
+        """The time font is chosen against the smallest stats font, so showing / hiding fields never resizes the time."""
+        for size in m.SIZES:
+            names = {m.choose_time_font(size, "line", s, b)[0].name for s in (True, False) for b in (True, False)}
+            self.assertEqual(len(names), 1, (size, names))
+
+    def test_steps_only_keeps_font_small(self):
+        """With Body Battery hidden the steps row keeps FONT_SMALL (the pre-icon look) for every size."""
+        for size in m.SIZES:
+            self.assertEqual(m.choose_time_font(size, "line", True, False)[2].name, "FONT_SMALL", size)
+
+    def test_body_battery_parse_port(self):
+        for v, want in ((None, None), (0, 0), (76, 76), (100, 100), (101, None), (-1, None), (42.6, 43), (42.4, 42)):
+            self.assertEqual(m.parse_body_battery(v), want, v)
 
     def test_sizes_are_monotonic(self):
         # "line" only: the device uses it (D-23); with the ruled-out pessimistic "digit" mapping the big fonts

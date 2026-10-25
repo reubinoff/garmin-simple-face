@@ -144,15 +144,19 @@ function testInsideCircle(logger as Logger) as Boolean {
 //! Fit math with fēnix 9 Pro 47mm font heights (device reference) and widths measured from the device fonts.
 (:test)
 function testBlockFits(logger as Logger) as Boolean {
-    // 454 px screen, FONT_SMALL height 53, date 237 px, steps 160 px wide (Roboto-Regular, D-23).
-    Test.assert(NoirLayout.blockFits(454, 113, 32, 89, 53, 237, 160, 2));     // NUMBER_MILD
-    Test.assert(NoirLayout.blockFits(454, 153, 43, 120, 53, 237, 160, 2));    // NUMBER_MEDIUM
-    Test.assert(NoirLayout.blockFits(454, 210, 59, 165, 53, 237, 160, 3));    // NUMBER_THAI_HOT (X-Large) fits on its digit box
-    Test.assert(NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 160, 3));    // RobotoCondensedRegular 208 px (XX-Large)
-    Test.assert(!NoirLayout.blockFits(454, 212, 70, 178, 53, 237, 160, 3));   // next XX-Large step: too wide
-    Test.assert(!NoirLayout.blockFits(454, 210, 105, 165, 53, 237, 160, 3));  // same font with the full line height as box
-    Test.assert(!NoirLayout.blockFits(454, 260, 70, 100, 53, 237, 160, 3));   // date/steps rows pushed off the circle
-    Test.assert(!NoirLayout.blockFits(454, 113, 32, 89, 53, 420, 160, 2));    // date too wide
+    // 454 px screen, FONT_SMALL height 53, date 237 px, stats row 160 px wide (Roboto-Regular, D-23).
+    Test.assert(NoirLayout.blockFits(454, 113, 32, 89, 53, 237, 53, 160, 2));     // NUMBER_MILD
+    Test.assert(NoirLayout.blockFits(454, 153, 43, 120, 53, 237, 53, 160, 2));    // NUMBER_MEDIUM
+    Test.assert(NoirLayout.blockFits(454, 210, 59, 165, 53, 237, 53, 160, 3));    // NUMBER_THAI_HOT (X-Large) fits on its digit box
+    Test.assert(NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 53, 160, 3));    // RobotoCondensedRegular 208 px (XX-Large)
+    Test.assert(!NoirLayout.blockFits(454, 212, 70, 178, 53, 237, 53, 160, 3));   // next XX-Large step: too wide
+    Test.assert(!NoirLayout.blockFits(454, 210, 105, 165, 53, 237, 53, 160, 3));  // same font with the full line height as box
+    Test.assert(!NoirLayout.blockFits(454, 260, 70, 100, 53, 237, 53, 160, 3));   // date/steps rows pushed off the circle
+    Test.assert(!NoirLayout.blockFits(454, 113, 32, 89, 53, 420, 53, 160, 2));    // date too wide
+    // Stats row hidden (width 0) never blocks; a wide stats row in a small font fits where FONT_SMALL does not (D-28).
+    Test.assert(NoirLayout.blockFits(454, 260, 70, 100, 53, 0, 0, 0, 3) == NoirLayout.insideCircle(215, 0, 130 + 13 + 53));
+    Test.assert(NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 37, 232, 3));    // XX-Large + both fields in FONT_XTINY
+    Test.assert(!NoirLayout.blockFits(454, 208, 69, 174, 53, 237, 53, 326, 3));   // ... but not in FONT_SMALL
     var radius = 454 / 2 - NoirLayout.EDGE_MARGIN;
     Test.assert(radius == 215);
     return true;
@@ -250,5 +254,113 @@ function testRowMask(logger as Logger) as Boolean {
         }
         Test.assertEqual(hits, 1);
     }
+    return true;
+}
+
+//! Stats row geometry (D-28): icon sizes scale with the row font, hidden groups take no space.
+(:test)
+function testStatsRowWidth(logger as Logger) as Boolean {
+    Test.assertEqual(NoirLayout.iconHeight(53), 31);
+    Test.assertEqual(NoirLayout.iconHeight(37), 22);
+    Test.assertEqual(NoirLayout.stepsIconWidth(53), 26);
+    Test.assertEqual(NoirLayout.bodyBatteryIconWidth(53), 17);
+    Test.assertEqual(NoirLayout.iconGap(53), 6);
+    Test.assertEqual(NoirLayout.groupGap(53), 21);
+    Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, false, 76), 0);
+    Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, false, 76), 26 + 6 + 160);
+    Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, true, 76), 17 + 6 + 76);
+    Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, true, 76), 26 + 6 + 160 + 21 + 17 + 6 + 76);
+    var fonts = NoirLayout.statsFontCandidates();
+    Test.assertEqual(fonts.size(), 3);
+    Test.assertEqual(fonts[0], Graphics.FONT_SMALL);
+    Test.assertEqual(fonts[2], Graphics.FONT_XTINY);
+    return true;
+}
+
+//! Nullable Body Battery value as text ("--" = null), so it can be compared with Test.assertEqual.
+(:test)
+module NoirTestUtil {
+    function bb(level as Number or Null) as String {
+        return NoirLayout.formatBodyBattery(level);
+    }
+}
+
+(:test)
+function testParseBodyBattery(logger as Logger) as Boolean {
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(null)), "--");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(0)), "0");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(76)), "76");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(100)), "100");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(101)), "--");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(-1)), "--");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(42.6f)), "43");
+    Test.assertEqual(NoirTestUtil.bb(NoirLayout.parseBodyBattery(42.4f)), "42");
+    Test.assertEqual(NoirLayout.formatBodyBattery(null), "--");
+    Test.assertEqual(NoirLayout.formatBodyBattery(7), "7");
+    Test.assertEqual(NoirLayout.formatBodyBattery(100), "100");
+    return true;
+}
+
+//! Stub with the same shape as SensorHistory.SensorSample (a `data` member).
+(:test)
+class StubBodyBatterySample {
+    var data as Number or Float or Null;
+    function initialize(value as Number or Float or Null) {
+        data = value;
+    }
+}
+
+//! NoirBodyBattery.fromSample with stubbed samples: no sample, null data, Float, Number, out of range.
+(:test)
+function testBodyBatteryFromStubSample(logger as Logger) as Boolean {
+    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(null)), "--");
+    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(null))), "--");
+    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(64))), "64");
+    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(63.7f))), "64");
+    Test.assertEqual(NoirTestUtil.bb(NoirBodyBattery.fromSample(new StubBodyBatterySample(250))), "--");
+    return true;
+}
+
+//! Real API on the simulated fenix 9 Pro 47mm: present (has-check) and read() returns null or 0..100 without throwing.
+(:test)
+function testBodyBatteryApiOnDevice(logger as Logger) as Boolean {
+    Test.assert(NoirBodyBattery.isAvailable());
+    var level = NoirBodyBattery.read();
+    logger.debug("Body Battery read: " + NoirLayout.formatBodyBattery(level));
+    Test.assert(level == null || (level >= 0 && level <= 100));
+    return true;
+}
+
+(:test)
+function testParseFlag(logger as Logger) as Boolean {
+    Test.assertEqual(NoirSettings.parseFlag(true), true);
+    Test.assertEqual(NoirSettings.parseFlag(false), false);
+    Test.assertEqual(NoirSettings.parseFlag(null), true);
+    Test.assertEqual(NoirSettings.parseFlag(0), true);
+    Test.assertEqual(NoirSettings.parseFlag("false"), true);
+    Test.assert(NoirSettings.isFlagKey(NoirSettings.KEY_SHOW_STEPS));
+    Test.assert(NoirSettings.isFlagKey(NoirSettings.KEY_SHOW_BODY_BATTERY));
+    Test.assert(!NoirSettings.isFlagKey(NoirSettings.KEY_TIME_SIZE));
+    return true;
+}
+
+//! Toggles write the Boolean property, refresh the cache and are independent; originals restored afterwards.
+(:test)
+function testToggleFlagsRoundTrip(logger as Logger) as Boolean {
+    var stepsKey = NoirSettings.KEY_SHOW_STEPS;
+    var bbKey = NoirSettings.KEY_SHOW_BODY_BATTERY;
+    var origSteps = NoirSettings.parseFlag(Application.Properties.getValue(stepsKey));
+    var origBb = NoirSettings.parseFlag(Application.Properties.getValue(bbKey));
+    NoirSettings.setFlag(stepsKey, true);
+    NoirSettings.setFlag(bbKey, false);
+    var a = [NoirSettings.showSteps(), NoirSettings.showBodyBattery(),
+        NoirSettings.parseFlag(Application.Properties.getValue(bbKey))] as Array<Boolean>;
+    NoirSettings.setFlag(stepsKey, false);
+    NoirSettings.setFlag(bbKey, true);
+    var b = [NoirSettings.showSteps(), NoirSettings.showBodyBattery(), NoirSettings.flagOf(stepsKey)] as Array<Boolean>;
+    NoirSettings.setFlag(stepsKey, origSteps);
+    NoirSettings.setFlag(bbKey, origBb);
+    Test.assert(a[0] == true && a[1] == false && a[2] == false);
+    Test.assert(b[0] == false && b[1] == true && b[2] == false);
     return true;
 }

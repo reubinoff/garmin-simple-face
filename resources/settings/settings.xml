@@ -48,4 +48,10 @@
             <listEntry value="0xFF4FA0">@Strings.ColorPink</listEntry>
         </settingConfig>
     </setting>
+    <setting propertyKey="@Properties.ShowSteps" title="@Strings.ShowStepsTitle">
+        <settingConfig type="boolean"/>
+    </setting>
+    <setting propertyKey="@Properties.ShowBodyBattery" title="@Strings.ShowBodyBatteryTitle">
+        <settingConfig type="boolean"/>
+    </setting>
 </settings>

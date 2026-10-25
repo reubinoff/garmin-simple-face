@@ -19,3 +19,4 @@ developer_key*
 internal-mir/
 __pycache__/
 *.pyc
+/store-assets/

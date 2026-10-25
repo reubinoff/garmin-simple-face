@@ -77,12 +77,13 @@ that do not meet the target device's minimum API level" - SDK release notes). St
   scripts additionally pass `-l 3` ("3 = strict", `monkey-c/compiler-options/`).
 Status: VERIFIED-SDK.
 
-## D-06 Permissions: none
+## D-06 Permissions: `SensorHistory` only (was: none; changed by D-27)
 
 The permission table in `core-topics/manifest-and-permissions/` lists Ant, AudioInput/Output, Background, BluetoothLowEnergy, Communications,
 ComplicationProvider/Subscriber, DataFieldAlert, Fit, PersistedContent, Positioning, Sensor, SensorHistory, SensorLogging, UserProfile.
-`ActivityMonitor`, `Time`, `System`, `Graphics`, `WatchUi`, `Application.Properties` are not in it, so `<iq:permissions/>` is empty.
-Benefit: no permission prompt, nothing to justify to reviewers. Status: VERIFIED-DOC.
+`ActivityMonitor`, `Time`, `System`, `Graphics`, `WatchUi`, `Application.Properties` are not in it. Since D-27 (Body Battery) the manifest declares
+exactly one permission, `<iq:uses-permission id="SensorHistory"/>` (SDK `bin/projectInfo.xml`: id `SensorHistory`, "Permission to access historical
+sensor data", module `SensorHistory`, listed for the `watchface` app type). No other permission is used. Status: VERIFIED-DOC + VERIFIED-SDK.
 
 ## D-07 Data sources (all permission-free, all API 1.0.0)
 
@@ -176,6 +177,7 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 
 * Job `static-checks` (no secrets): XML well-formedness, `bash -n` on scripts, host tests (D-22), no key files tracked.
 * Job `build` (skipped with a warning when secrets are missing): Java 21, Go (to `go install` the pinned CLI), `scripts/install-sdk.sh`, key from secret `CIQ_DEVELOPER_KEY_B64`, `scripts/build.sh`, Connect IQ unit tests under `xvfb`, upload `NoirTime.prg` and `NoirTime.iq` as an artifact.
+* `CIQ_AGREEMENT_HASH` is read from `secrets` (it was `vars` before 2026-10-25). Job `build` runs in the GitHub Environment `publish` (`environment: publish`, added 2026-10-25): the owner stores `GARMIN_USERNAME`, `GARMIN_PASSWORD`, `CIQ_DEVELOPER_KEY_B64` as environment secrets there; `static-checks` has no environment.
 * Garmin does not document a CI procedure; Garmin login in CI is therefore a **community pattern** (D-03). Risk: Garmin SSO may require MFA or block datacenter IPs (gap G-8).
 * Action majors (`checkout@v7`, `setup-java@v6`, `setup-go@v7`, `upload-artifact@v7`) are the existing latest majors as of 2026-10-23 (checked via the GitHub API/tags).
 * The workflow never prints the key or password; the key is written to `$RUNNER_TEMP` and is not uploaded.
@@ -460,6 +462,138 @@ Possible further saving, **not done** (changes the look, owner decision): draw t
 slightly thinner diagonal edges); or choose Large/X-Large instead of XX-Large for the lowest always-on cost.
 Status: rules VERIFIED-DOC; code check and profiles VERIFIED-ON-BOX; watch battery % UNVERIFIED.
 
+## D-27 Body Battery: `SensorHistory.getBodyBatteryHistory` (2026-10-25)
+
+* API: `Toybox.SensorHistory.getBodyBatteryHistory(options)`, "Since: API Level 3.3.0"; the fēnix® 9 Pro 47mm is in its Supported Devices list
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/SensorHistory.html>). The module needs the `SensorHistory` permission (D-06,
+  <https://developer.garmin.com/connect-iq/core-topics/manifest-and-permissions/>).
+* Returns a `SensorHistoryIterator`; `next()` gives a `SensorSample` or `null`
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/SensorHistory/SensorHistoryIterator.html>); `SensorSample.data` is `Number`, `Float` or `null`
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/SensorHistory/SensorSample.html>).
+* Code (`source/NoirBodyBattery.mc`): guarded with `Toybox has :SensorHistory && SensorHistory has :getBodyBatteryHistory`; call
+  `{:period => 1, :order => ORDER_NEWEST_FIRST}` = only the newest sample; `NoirLayout.parseBodyBattery` rounds a Float, drops values outside 0-100 and
+  `null`, and the face shows `--` then. Read only when the field is shown and at most once per minute (not per frame, not per second).
+* Alternative evaluated, not used: `Toybox.Complications` `COMPLICATION_TYPE_BODY_BATTERY` (API 4.2.0, fēnix 9 Pro supported,
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/Complications.html>). It needs the `ComplicationSubscriber` permission and a subscription /
+  callback; the history read is simpler and is a single call per minute.
+* Simulator: unit test `testBodyBatteryApiOnDevice` read **88** from the simulator; screenshots show 88. Status: VERIFIED-DOC, VERIFIED-SDK, VERIFIED-ON-BOX (simulator);
+  value on the real watch UNVERIFIED (G-18).
+
+## D-28 Steps and Body Battery icons: vector drawing with `Dc` primitives; adaptive stats font (2026-10-25)
+
+* Icons are drawn, not bitmaps: `fillEllipse`, `fillPolygon`, `drawRoundedRectangle`, `fillRectangle`, `setPenWidth` (all API 1.0.0,
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>; `fillPolygon` max 64 points, the bolt uses 6). Steps = two footprints
+  (forefoot + heel ellipses), Body Battery = battery outline with cap and a lightning bolt, in the Garmin style. Size follows the row font
+  (icon height 60 % of the font height), colour = the date/stats grey; no resource loads, nothing extra in memory.
+* Always-on: the icons use the same grey and the same shift + row mask as the text (D-19).
+* Both values in one row would have needed a smaller time font on XX-Large. So the time font is chosen against the smallest stats font (`FONT_XTINY`)
+  and the toggles never change the time size; then the stats font is the largest of `FONT_SMALL`, `FONT_TINY`, `FONT_XTINY` that still fits
+  (`NoirLayout.statsFontCandidates()`, `statsRowWidth()`, 9-argument `blockFits()`). Result (model + simulator): Small/Medium `FONT_SMALL`, Large
+  `FONT_TINY`, X-Large `FONT_XTINY`, XX-Large `FONT_TINY`; with only steps shown, `FONT_SMALL` at every size. Status: VERIFIED-DOC, VERIFIED-ON-BOX.
+
+## D-29 Show/hide toggles: `ShowSteps`, `ShowBodyBattery` (2026-10-25)
+
+* Properties `ShowSteps` and `ShowBodyBattery`, `type="boolean"`, default `true`; phone settings `<settingConfig type="boolean"/>`
+  (<https://developer.garmin.com/connect-iq/core-topics/properties-and-app-settings/>). Titles EN "Show Steps" / "Show Body Battery", HE
+  "הצג צעדים" / "הצג Body Battery".
+* On the watch: two `WatchUi.ToggleMenuItem` (API 3.0.0, allowed in watch faces,
+  <https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/ToggleMenuItem.html>) in the existing Menu2 (D-16), sub-labels On/Off
+  (`{:enabled, :disabled}`); `onSelect` stores `isEnabled()` with `Properties.setValue` and redraws.
+* A hidden field is not read at all (`ActivityMonitor.getInfo()` / `getBodyBatteryHistory` skipped). With both hidden the stats row disappears.
+  If the watch has no Body Battery API the field is hidden automatically. A non-boolean stored value counts as `true` (`NoirSettings.parseFlag`).
+* Tests: `testParseFlag`, `testToggleFlagsRoundTrip` (simulator), host `test_show_hide_toggles`, `test_toggles_do_not_change_time_font`.
+  Status: VERIFIED-DOC, VERIFIED-ON-BOX (simulator); menu on the real watch UNVERIFIED (G-11/G-12).
+
+## D-30 Battery re-check after the icons, Body Battery and toggles (2026-10-25)
+
+Rules as in D-21 / D-26 (WatchFace update rate <https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFace.html>, AMOLED FAQ
+<https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>, profiler
+<https://developer.garmin.com/connect-iq/core-topics/profiling/>).
+
+What the new features add:
+* Body Battery: one `getBodyBatteryHistory` call with `:period => 1`, at most once per minute and only when the field is shown. No sensor,
+  no timer, no background, no `Complications` subscription.
+* Hidden fields are not read at all.
+* Icons are `Dc` primitives (no bitmap resources). The stats-row width is cached and rebuilt only when the text or layout changes.
+* Unchanged from D-21 / D-26: no `onPartialUpdate`, no `Timer`; `ActivityMonitor.getInfo()` once per frame (about 0.02 ms).
+
+Simulator profiler (`-k`, white/white = brightest, steps + Body Battery shown, about 1 min active then 5-6 min Always-On; screenshots
+`docs/screenshots/profiler_large_white-white*.png`, `profiler_xxlarge_white-white*.png`):
+
+| Measured (simulator, host CPU) | Large (D-26 → now) | XX-Large (D-26 → now) |
+|---|---|---|
+| `onUpdate` calls / average | 145 / 13.0 ms → 62 / 16.0 ms | 64 / 19.8 ms → 67 / 21.0 ms |
+| `drawStatsRow` per frame (text + both icons) | - → 3.66 ms | - → 3.63 ms |
+| of which `drawStepsIcon` / `drawBodyBatteryIcon` | - → 0.45 / 0.33 ms | - → 0.44 / 0.33 ms |
+| `getBodyBatteryHistory` + `next()` | - → 7 calls in ~7 min, 0.011 + 0.007 ms | - → 7 calls, 0.013 + 0.006 ms |
+| `Gregorian.info` / `Lang.format` | once per minute | once per minute |
+| Work per always-on minute (outline + mask 1.8 ms + clear 2.4 ms + date/stats) | ~28 → ~29 ms | ~55 → ~66 ms |
+| Per active frame | ~12 → ~14 ms | ~15 → ~16 ms |
+| Runtime memory (status bar) | 11.4 → 15.3 kB | 12.3 → 15.5 kB of 123.8 kB |
+
+How to read this: the new stats row adds about 3.6 ms per frame, which is about 4 ms per always-on minute, and most of that is the text, not the
+icons (under 1 ms). XX-Large always-on goes from about 55 to about 66 ms per minute, still about 0.1 % duty cycle. Nothing runs per second,
+there are no sensors and no radio. Memory is about 3 kB higher (new code; no bitmaps).
+
+Hiding a field skips its drawing and its data read (screenshots `*_no-*`). These are simulator times on the host CPU; the battery % per day on
+the watch is still **UNVERIFIED** (G-15).
+
+Burn-in re-run, real simulator:
+* Always-On frames, all sizes: 2.6-4.4 % pixels on, 1.6-3.9 % luminance.
+* 24-hour heat map: Large white/white 2.15 %, XX-Large white/white 3.57 % peak luminance, "no screen burn-in detected" for both
+  (`docs/burn-in-report.md`, `burnin24h_large_white-white.png`, `burnin24h_xxlarge_white-white.png`).
+
+Status: VERIFIED-DOC (rules), VERIFIED-ON-BOX (profile, burn-in); watch battery UNVERIFIED.
+
+## D-31 Store release: "Build store package" workflow, manual upload (2026-10-25)
+
+* Garmin's publishing guide describes only uploading the `.iq` to the Connect IQ Store by hand, then adding description and screenshots, then
+  review (<https://developer.garmin.com/connect-iq/submit-an-app/>). None of the Garmin pages or SDK files read for this project document an API or
+  CLI for uploading or submitting. The Developer Dashboard <https://apps.garmin.com/developer/dashboard> is behind the Garmin login (it redirects to
+  `sso.garmin.com`, checked 2026-10-25). So the workflow does **not** upload anything.
+* `.github/workflows/release.yml` ("Build store package", `workflow_dispatch` with inputs `version` and `whats_new`, `permissions: contents: write`,
+  job `package` on `ubuntu-22.04` in environment `publish`): it fails if a secret is missing, checks that the version matches `manifest.xml`,
+  installs the SDK, writes the key to `$RUNNER_TEMP`, runs `scripts/build.sh` (strict `-l 3 -w`, `.prg` + `.iq`) and the unit tests under `xvfb`,
+  makes the store images with `scripts/store-assets.sh` (warnings only), then runs `gh release create v<version>` with the `.iq`, `.prg` and
+  images. It uses `gh` from the runner, not a third-party release action. The step summary has the manual upload checklist.
+* Version guard: the SDK's own sample manifests carry `version="x.y.z"` on `<iq:application>` (e.g. `samples/*/manifest.xml` in SDK 9.3.0), so
+  `version="1.0.0"` was added to `manifest.xml`; the build accepts it. The store asks for a version when you upload. The workflow stops if the
+  input differs from the manifest or is longer than 20 characters. The 20-character limit comes from the owner's brief; I did not find it in the
+  Garmin pages I read (G-20).
+* Secrets: build.yml and release.yml read `GARMIN_USERNAME`, `GARMIN_PASSWORD`, `CIQ_AGREEMENT_HASH` (changed from a repository variable to a
+  secret on 2026-10-25) and `CIQ_DEVELOPER_KEY_B64` from the `publish` environment. Inputs reach the shell only through `env`, never as
+  `${{ }}` inside scripts. The key is never printed or uploaded.
+* Checked here: YAML parses, every `run:` block passes `bash -n`, the version step was run against 1.0.0 / 1.0.1 / 21 chars
+  (pass / fail / fail), and actionlint 1.7.7 is clean. Not run on GitHub (no push from here, G-17).
+  Status: VERIFIED-DOC (manual submit), VERIFIED-ON-BOX (local checks); workflow run UNVERIFIED.
+
+## D-32 Store images (2026-10-25)
+
+* Garmin Connect IQ brand guidelines, "App Store Assets" (<https://developer.garmin.com/brand-guidelines/connect-iq>):
+  - 500 x 500 px, sRGB, 10 px padding, centred, not stretched
+  - no black or transparent background, a simple solid colour
+  - no descriptive text, no Garmin branding
+  - "For watch faces, using a preview of the watch face as the app icon often works best"
+  - on-device icon 128 x 128; hero image 1440 x 720 (neither made here)
+* `scripts/store-assets.sh` (ImageMagick 6 or 7):
+  - `cover.png` is the round screen of the real `docs/screenshots/active_large_yellow-white.png`, masked to the circle so the simulator bezel
+    is dropped, scaled to 480 px, centred on solid `#3A3F47` (not black, not a Garmin colour), with alpha removed
+  - every real `active_*` / `aod_*` frame is saved as PNG, or as JPG with the quality stepped down if the PNG is over 150 KB
+  - local run: cover 500x500 sRGB, about 38 KB; 26 screenshots, all PNG, 55-61 KB
+  The 150 KB screenshot limit is the owner's target; the screenshot size and count of the store form are not in the pages read (G-7).
+  Status: VERIFIED-DOC (cover spec), VERIFIED-ON-BOX (script output).
+
+## D-33 Signing key: one key for the app's whole life (2026-10-25)
+
+* "It's important you keep track of the key you use to sign app packages. You will need to use the same key to sign updates to an existing app on
+  the store. If you lose your original signing key you will not be able to update your app." (Security,
+  <https://developer.garmin.com/connect-iq/core-topics/security/>; also *Getting Started*,
+  <https://developer.garmin.com/connect-iq/connect-iq-basics/getting-started/>).
+* So CI never generates a key. It decodes the owner's key from `CIQ_DEVELOPER_KEY_B64` for each run. README and docs/DEVELOPMENT.md say to back it
+  up and reuse it. Garmin's forum staff say a lost key means republishing under a new app id
+  (<https://forums.garmin.com/developer/connect-iq/f/connect-iq-web-store/402228/developer-key-lost>; this is a forum post, not documentation).
+  Status: VERIFIED-DOC.
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -478,9 +612,12 @@ Status: rules VERIFIED-DOC; code check and profiles VERIFIED-ON-BOX; watch batte
 | G-12 | `getSettingsView()` next to the native editor; `onSettingsChanged()` after an on-device change; immediate sub-label refresh | not documented; not exercised in the simulator yet | test on the watch |
 | G-13 | ~~Which font each size gets~~ **RESOLVED** (D-17/D-23); still open: long localised (Hebrew) dates | | check in Hebrew |
 | G-14 | Hebrew in the menu sub-labels / phone settings list | needs device/phone | look with the language set to Hebrew |
-| G-15 | Battery % per day on the watch | simulator profiler done (D-21: ~28 ms per always-on minute for Large; D-26: ~38 / ~55 ms for X-Large / XX-Large); Garmin gives no conversion to watch battery | wear it a day; `-k` build writes `GARMIN\APPS\LOGS\<app>.PRF` |
+| G-15 | Battery % per day on the watch | simulator profiler done (D-21: ~28 ms per always-on minute for Large; D-26: ~38 / ~55 ms for X-Large / XX-Large; D-30 with icons + Body Battery: ~29 / ~66 ms for Large / XX-Large); Garmin gives no conversion to watch battery | wear it a day; `-k` build writes `GARMIN\APPS\LOGS\<app>.PRF` |
 | G-16 | ~~Hollow glyph rendering / `monkeydo -t` output~~ **RESOLVED** (D-23): clean hollow glyphs; summary `PASSED (passed=N, failed=0, errors=0)`, exit code 1 regardless | | |
-| G-17 | CI `build` job (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
+| G-18 | Body Battery value / update rate on the real watch | simulator returns a fixed value (88) | wear it and compare with the Garmin widget |
+| G-19 | Steps value in the screenshots is 0 | simulator *Activity Monitoring* dialog did not take a value in this session | real data on the watch; icon and layout are verified |
+| G-20 | Store version format / 20-character limit | not in the Garmin pages read; the limit comes from the owner's brief | check the upload form |
+| G-17 | CI `build` job / `release.yml` (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
 ## What WAS verified in this session
 
@@ -497,3 +634,6 @@ Status: rules VERIFIED-DOC; code check and profiles VERIFIED-ON-BOX; watch batte
 * Strict device build, `.iq` export, 15/15 simulator unit tests, real screenshots, 24-hour burn-in simulation, profiler (D-23, D-21).
 * 22 host tests pass (with stand-in and with device fonts).
 * After D-24/D-25 (sizes X-Large/XX-Large, 16 colours): strict device build + `.iq` without warnings, 17/17 simulator unit tests, 23 host tests (22 pass, 1 skipped), new real screenshots, 24-hour burn-in simulations and profiles (D-24, D-26).
+* After D-27 - D-33 (2026-10-25): strict device build + `.iq` with `-l 3 -w`, no warnings. 23/23 simulator unit tests pass (`PASSED (passed=23, failed=0, errors=0)`;
+  Body Battery read 88). 28 host tests pass with device fonts + XSD (27 + 1 skipped without the XSD). New real screenshots, including the
+  hidden-field variants. Two 24-hour burn-in simulations and two profiles (D-30). Release workflow checked locally (D-31).

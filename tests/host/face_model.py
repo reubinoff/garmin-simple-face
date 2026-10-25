@@ -40,7 +40,7 @@ SCREEN = 454  # fēnix 9 Pro 47mm, device reference
 
 # Font heights from the fēnix 9 Pro 47mm device reference (fenix9pro47mm).
 FONTS = {
-    "FONT_XTINY": ("roboto", 37), "FONT_SMALL": ("roboto", 53), "FONT_LARGE": ("roboto", 71),
+    "FONT_XTINY": ("roboto", 37), "FONT_TINY": ("roboto", 47), "FONT_SMALL": ("roboto", 53), "FONT_LARGE": ("roboto", 71),
     "FONT_NUMBER_MILD": ("rajdhani", 113), "FONT_NUMBER_MEDIUM": ("rajdhani", 153),
     "FONT_NUMBER_HOT": ("rajdhani", 173), "FONT_NUMBER_THAI_HOT": ("rajdhani", 210),
 }
@@ -73,6 +73,7 @@ FONT_CANDIDATES = {
     S["SIZE_XXLARGE"]: _XL,   # fallback only; XX-Large uses the scalable condensed face
 }
 SIZES = sorted(FONT_CANDIDATES)
+STATS_FONTS = ["FONT_SMALL", "FONT_TINY", "FONT_XTINY"]   # NoirLayout.statsFontCandidates()
 
 
 def color_values():
@@ -121,14 +122,56 @@ def digit_half_height(fh, percent):
     return mc_div(fh * percent + 99, 100)
 
 
-def block_fits(screen, th, digit_half, digits_w, sh, date_w, steps_w, pad):
+def block_fits(screen, th, digit_half, digits_w, date_h, date_w, stats_h, stats_w, pad):
     radius = mc_div(screen, 2) - L["EDGE_MARGIN"]
     sp = row_spacing(screen)
     half_w = mc_div(digits_w * 2 + colon_gap(th), 2) + pad
     half_h = digit_half + pad
-    outer = mc_div(th, 2) + sp + sh
-    return (inside_circle(radius, half_w, half_h) and inside_circle(radius, mc_div(date_w, 2), outer)
-            and inside_circle(radius, mc_div(steps_w, 2), outer))
+    return (inside_circle(radius, half_w, half_h)
+            and inside_circle(radius, mc_div(date_w, 2), mc_div(th, 2) + sp + date_h)
+            and (stats_w <= 0 or inside_circle(radius, mc_div(stats_w, 2), mc_div(th, 2) + sp + stats_h)))
+
+
+def icon_height(fh):
+    return mc_div(fh * L["ICON_HEIGHT_PERCENT"], 100)
+
+
+def steps_icon_width(fh):
+    return mc_div(icon_height(fh) * L["STEPS_ICON_WIDTH_PERCENT"], 100)
+
+
+def body_battery_icon_width(fh):
+    return mc_div(icon_height(fh) * L["BODY_BATTERY_ICON_WIDTH_PERCENT"], 100)
+
+
+def icon_gap(fh):
+    return mc_div(fh * L["ICON_GAP_PERCENT"], 100)
+
+
+def group_gap(fh):
+    return mc_div(fh * L["GROUP_GAP_PERCENT"], 100)
+
+
+def stats_row_width(fh, show_steps, steps_w, show_bb, bb_w):
+    w = 0
+    if show_steps:
+        w += steps_icon_width(fh) + icon_gap(fh) + steps_w
+    if show_bb:
+        if show_steps:
+            w += group_gap(fh)
+        w += body_battery_icon_width(fh) + icon_gap(fh) + bb_w
+    return w
+
+
+def parse_body_battery(v):
+    if v is None:
+        return None
+    level = int(v + 0.5) if isinstance(v, float) else v
+    return level if 0 <= level <= 100 else None
+
+
+def format_body_battery(level):
+    return "--" if level is None else str(level)
 
 
 def aod_shift(minute):
@@ -204,36 +247,81 @@ class Font:
             d.text((left, y), text, font=self.font, fill=fill, anchor="lm")
 
 
-def fits(f, small, percent):
+def stats_width(sf, show_steps=True, show_bb=True):
+    return stats_row_width(sf.height, show_steps, sf.width(L["SAMPLE_STEPS"]), show_bb,
+                           sf.width(L["SAMPLE_BODY_BATTERY"]))
+
+
+def fits(f, small, percent, stats=None, show_steps=True, show_bb=True):
+    """Port of NoirTimeView.fits(); stats = stats-row font (default: the smallest candidate, as the time font search)."""
+    stats = stats or small
     return block_fits(SCREEN, f.height, digit_half_height(f.height, percent), f.width("00"), small.height,
-                      small.width(L["SAMPLE_DATE"]), small.width(L["SAMPLE_STEPS"]), outline_width(f.height))
+                      small.width(L["SAMPLE_DATE"]), stats.height, stats_width(stats, show_steps, show_bb),
+                      outline_width(f.height))
 
 
-def choose_time_font(size, mapping):
-    """Port of NoirTimeView.updateLayout() / chooseVectorFont(): first candidate that fits, outline pad included."""
+def choose_time_font(size, mapping, show_steps=True, show_bb=True):
+    """Port of NoirTimeView.updateLayout() / chooseVectorFont(): first time candidate that fits (against the smallest
+    stats font), then the largest stats font that fits. Returns (time font, date font, stats font)."""
     small = Font("FONT_SMALL", mapping)
+    smallest = Font(STATS_FONTS[-1], mapping)
+    chosen = None
     if size == S["SIZE_XXLARGE"]:
         for px in range(L["XXL_SIZE_MAX"], L["XXL_SIZE_MIN"] - 1, -L["XXL_SIZE_STEP"]):
             f = Font("VECTOR_%d" % px, mapping)
-            if fits(f, small, L["DIGIT_HALF_PERCENT_CONDENSED"]):
-                return f, small
-    cands = FONT_CANDIDATES[size]
-    for name in cands:
-        f = Font(name, mapping)
-        if fits(f, small, L["DIGIT_HALF_PERCENT_NUMBER"]):
-            return f, small
-    return Font(cands[-1], mapping), small
+            if fits(f, small, L["DIGIT_HALF_PERCENT_CONDENSED"], smallest, show_steps, show_bb):
+                chosen = f
+                break
+    if chosen is None:
+        cands = FONT_CANDIDATES[size]
+        chosen = Font(cands[-1], mapping)
+        for name in cands:
+            f = Font(name, mapping)
+            if fits(f, small, L["DIGIT_HALF_PERCENT_NUMBER"], smallest, show_steps, show_bb):
+                chosen = f
+                break
+    pct = L["DIGIT_HALF_PERCENT_CONDENSED" if chosen.condensed else "DIGIT_HALF_PERCENT_NUMBER"]
+    stats = smallest
+    for name in STATS_FONTS:
+        sf = Font(name, mapping)
+        if fits(chosen, small, pct, sf, show_steps, show_bb):
+            stats = sf
+            break
+    return chosen, small, stats
 
 
 def rgb(c):
     return ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF)
 
 
+def draw_steps_icon(d, x, top, w, h, fill):
+    """NoirTimeView.drawStepsIcon: two shoe prints (forefoot + heel ellipses), left one higher."""
+    pr = mc_div(h * 84, 100)
+    fore_rx, heel_rx = mc_div(w * 22, 100), mc_div(w * 17, 100)
+    fore_ry, heel_ry = mc_div(pr * 31, 100), mc_div(pr * 20, 100)
+    for i in range(2):
+        cx = x + (mc_div(w * 24, 100) if i == 0 else mc_div(w * 76, 100))
+        py = top + (0 if i == 0 else h - pr)
+        for ey, rx, ry in ((py + fore_ry, fore_rx, fore_ry), (py + pr - heel_ry, heel_rx, heel_ry)):
+            d.ellipse((cx - rx, ey - ry, cx + rx, ey + ry), fill=fill)
+
+
+def draw_body_battery_icon(d, x, top, w, h, fill):
+    """NoirTimeView.drawBodyBatteryIcon: battery outline + terminal + lightning bolt."""
+    pen = max(2, mc_div(h, 12))
+    cap, cap_w = mc_div(h * 12, 100), mc_div(w * 46, 100)
+    d.rectangle((x + mc_div(w - cap_w, 2), top, x + mc_div(w - cap_w, 2) + cap_w - 1, top + cap - 1), fill=fill)
+    bt, bh = top + cap, h - cap
+    d.rounded_rectangle((x, bt, x + w - 1, bt + bh - 1), radius=pen + 1, outline=fill, width=pen)
+    pts = [(60, 16, 56), (22, 56, 56), (47, 56, 56), (38, 86, 86), (78, 44, 44), (53, 44, 44)]
+    d.polygon([(x + mc_div(w * a, 100), bt + mc_div(bh * b, 100)) for a, b, _ in pts], fill=fill)
+
+
 def render(size, hour_color, minute_color, low_power, hour=10, minute=8, steps=8432, date="Fri 23 Oct",
-           is24=True, mapping="line", fonts=None):
+           is24=True, mapping="line", fonts=None, body_battery=76, show_steps=True, show_bb=True):
     # mask=False is not offered on purpose: the model always draws exactly what the watch draws.
     """Returns an RGB numpy array (SCREEN x SCREEN x 3) drawn like NoirTimeView.onUpdate()."""
-    tf, sf = fonts if fonts else choose_time_font(size, mapping)
+    tf, sf, stf = fonts if fonts else choose_time_font(size, mapping, show_steps, show_bb)
     im = Image.new("RGB", (SCREEN, SCREEN), (0, 0, 0))
     d = ImageDraw.Draw(im)
     th, sh = tf.height, sf.height
@@ -262,7 +350,24 @@ def render(size, hour_color, minute_color, low_power, hour=10, minute=8, steps=8
             d.ellipse((cx - r, yy - r, cx + r, yy + r), fill=rgb(colon_c))
     row = mc_div(th, 2) + row_spacing(SCREEN) + mc_div(sh, 2)
     sf.draw(d, cx, cy - row, date, "center", rgb(text_c))
-    sf.draw(d, cx, cy + row, format_steps(steps), "center", rgb(text_c))
+    if show_steps or show_bb:   # NoirTimeView.drawStatsRow
+        h = stf.height
+        y = cy + mc_div(th, 2) + row_spacing(SCREEN) + mc_div(h, 2)
+        st, bt = format_steps(steps), format_body_battery(body_battery)
+        total = stats_row_width(h, show_steps, stf.width(st), show_bb, stf.width(bt))
+        x = cx - mc_div(total, 2)
+        ih = icon_height(h)
+        itop = y - mc_div(ih, 2)
+        if show_steps:
+            w = steps_icon_width(h)
+            draw_steps_icon(d, x, itop, w, ih, rgb(text_c))
+            x += w + icon_gap(h)
+            stf.draw(d, x, y, st, "left", rgb(text_c))
+            x += stf.width(st) + group_gap(h)
+        if show_bb:
+            w = body_battery_icon_width(h)
+            draw_body_battery_icon(d, x, itop, w, ih, rgb(text_c))
+            stf.draw(d, x + w + icon_gap(h), y, bt, "left", rgb(text_c))
     arr = np.asarray(im).copy()
     if low_power:  # NoirTimeView.drawRowMask()
         for y in range(mask_first_row(0, minute), SCREEN, L["AOD_MASK_PERIOD"]):
@@ -291,7 +396,7 @@ def luminance_fraction(arr):
     return float(y.sum() / screen_pixels())
 
 
-def burn_in_run(size, hour_color, minute_color, start_minute, minutes, mapping="line", steps=8432):
+def burn_in_run(size, hour_color, minute_color, start_minute, minutes, mapping="line", steps=8432, body_battery=76):
     """Simulates `minutes` consecutive always-on updates (one per minute, as documented for low power) and
     returns (max lit fraction, max luminance fraction, longest run of consecutive minutes any pixel stayed on)."""
     fonts = choose_time_font(size, mapping)
@@ -300,7 +405,7 @@ def burn_in_run(size, hour_color, minute_color, start_minute, minutes, mapping="
     for i in range(minutes):
         t = (start_minute + i) % 1440
         arr = render(size, hour_color, minute_color, True, hour=t // 60, minute=t % 60, steps=steps,
-                     mapping=mapping, fonts=fonts)
+                     mapping=mapping, fonts=fonts, body_battery=body_battery)
         on = arr.max(axis=2) > 0
         run = np.where(on, run + 1, 0)
         longest = max(longest, int(run.max()))

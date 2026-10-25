@@ -4,4 +4,7 @@
     <!-- Colours as 0xRRGGBB. Must be one of the list entries in settings.xml / NoirSettings.colorValues(). -->
     <property id="HourColor" type="number">0xFFFFFF</property>
     <property id="MinuteColor" type="number">0xFFFFFF</property>
+    <!-- Show / hide the steps and Body Battery fields (DECISIONS.md D-29). -->
+    <property id="ShowSteps" type="boolean">true</property>
+    <property id="ShowBodyBattery" type="boolean">true</property>
 </properties>

@@ -1,0 +1,137 @@
+# Noir Time - developer guide
+
+Everything that does not fit on the short [README](../README.md): project layout, building, testing, battery,
+sideloading, CI and publishing. Every technical decision and its official Garmin source: **[DECISIONS.md](../DECISIONS.md)**.
+
+## Project layout
+
+```
+manifest.xml            app id, device (fenix9pro47mm), minApiLevel 5.0.0, permission SensorHistory (Body Battery), languages eng+heb
+monkey.jungle           project.manifest + project.typecheck = strict
+source/NoirTimeApp.mc   AppBase (settings change -> redraw, getSettingsView -> on-watch menu)
+source/NoirSettings.mc  setting keys, values, labels (read/write helpers)
+source/NoirTimeSettingsMenu.mc  on-watch settings menu (Menu2)
+source/NoirTimeView.mc  the watch face (drawing only, incl. the steps / Body Battery vector icons)
+source/NoirBodyBattery.mc  Body Battery reader (SensorHistory.getBodyBatteryHistory, guarded with `has`)
+source/NoirLayout.mc    pure layout / AOD helpers (fit check, outline width, shift, row mask, formatting) - unit-tested
+source/tests/           Connect IQ (:test) unit tests (excluded from normal builds)
+tests/host/             host tests (Python): resources vs code, model of the drawing code, AOD burn-in harness; stand-in OFL fonts
+resources/              strings, properties.xml (TimeSize, HourColor, MinuteColor, ShowSteps, ShowBodyBattery), settings.xml, launcher icon 65x65
+resources-heb/          Hebrew settings strings
+scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh, run-unit-tests.sh, store-assets.sh
+.github/workflows/      build.yml  (static checks + host tests; signed build + unit tests + artifacts)
+                        release.yml  ("Build store package": manual; signed .iq + store images on a GitHub Release)
+store/                  store description, release notes, screenshot checklist
+docs/mockups/           design mockups (NOT simulator screenshots) + docs/tools/make_mockups.py
+docs/screenshots/       REAL simulator screenshots (SDK 9.3.0, device files + fonts)
+docs/burn-in-report.md  real burn-in measurements + font-accurate full-day report (tests/host/burnin_report.py)
+```
+
+## 1. Build locally
+
+### Option A - SDK installed with the community CLI (headless, what CI uses)
+```bash
+# one-time: read the licence, then note the hash it prints
+connect-iq-sdk-manager agreement view         # see scripts/install-sdk.sh for how to install this tool
+export CIQ_AGREEMENT_HASH=<hash printed above, only after you have read and agree to the agreement>
+export GARMIN_USERNAME=... GARMIN_PASSWORD=...
+scripts/install-sdk.sh                         # SDK 9.3.0 + fenix9pro47mm device files; prints the PATH line to add
+scripts/keygen.sh                              # creates ~/.connectiq-keys/developer_key.der (BACK IT UP)
+scripts/build.sh                               # build/NoirTime.prg + build/NoirTime.iq, strict type check
+```
+
+### Option B - official SDK Manager (GUI)
+1. Download the SDK Manager from <https://developer.garmin.com/connect-iq/sdk/>, log in with your Garmin account, download **SDK 9.3.0** and the **fēnix® 9 Pro 47mm** device, "Use as SDK".
+2. Put the SDK `bin` on `PATH` (Linux: ``export PATH=$PATH:`cat $HOME/.Garmin/ConnectIQ/current-sdk.cfg`/bin``). Java 11+ is required.
+3. `scripts/keygen.sh` then `scripts/build.sh` (or use the VS Code "Monkey C" extension: *Monkey C: Build for Device*).
+
+Both scripts only call `monkeyc`; see DECISIONS.md D-12 for the exact flags (`-d fenix9pro47mm -l 3 -w -y <key>`).
+**A clean build means: no errors and no warnings from `monkeyc ... -l 3 -w`.** If the strict type checker flags something, fix it before publishing.
+
+## 2. Test in the simulator
+```bash
+scripts/run-simulator.sh        # builds a debug PRG, starts `connectiq`, runs `monkeydo` on fenix9pro47mm
+```
+Check, and take real screenshots into [`screenshots/`](screenshots/):
+1. Time/date/steps centred, nothing cut off by the round edge.
+2. Change `TimeSize`, `HourColor` and `MinuteColor` with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 5 sizes in high power and always-on: nothing may overlap or touch the round edge.
+   On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Noir Time* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
+3. Always-on: digits must be the same size as in step 2, hollow (outline only); switch to always-on with **Settings > Display Mode > Always-On** (SDK 9.3.0 simulator) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
+4. 12h/24h: change the simulated time format.
+5. Steps: the docs name **Simulation -> Activity Data** for simulated activity data; check the steps text with 0, 999, 1 000, 12 345 and 100 000+ values.
+6. Set the language to Hebrew and look at the date.
+
+## Tests
+```bash
+python3 -m unittest discover -s tests/host -v          # host tests, no SDK needed (numpy, Pillow, lxml)
+CIQ_RESOURCES_XSD=<sdk>/bin/resources.xsd python3 -m unittest discover -s tests/host -v   # + schema validation
+CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py   # font-accurate full day -> docs/burn-in-report.md
+scripts/run-unit-tests.sh                              # Connect IQ unit tests: monkeyc -t, connectiq, monkeydo -t
+xvfb-run -a scripts/run-unit-tests.sh                  # same, headless (simulator needs libwebkit2gtk-4.0, e.g. Ubuntu 22.04)
+```
+The host model uses stand-in OFL fonts by default. With `CIQ_DEVICE_FONTS` pointing at the fonts the SDK manager downloads
+(`device download -d fenix9pro47mm --include-fonts`; not in the repo) it uses the device's own TTFs and matches real simulator frames within 0.1 %.
+`tests/host/test_screenshots.py` checks the real screenshots (< 10 % pixels/luminance, same digit size in always-on).
+Last run: `PASSED (passed=17, failed=0, errors=0)`; note that `monkeydo -t` exits 1 even then, the script reads the summary.
+
+## Battery
+What the face does to keep the drain low (details and doc links: DECISIONS.md D-21): no `onPartialUpdate`, no timers, no background service,
+no sensors, no permissions, system fonts only (XX-Large: one scalable system font from `Graphics.getVectorFont`, looked up once per size change); settings cached and re-read only when they change; date/time strings rebuilt once a minute,
+the steps string only when the count changes; in always-on it draws once a minute with 2.1 - 3.9 % of the pixels lit (simulator; full-day worst case 5.0 %, XX-Large).
+Simulator profiler (D-21, D-26): about 28 / 38 / 55 ms of work per always-on minute for Large / X-Large / XX-Large, about 12 - 15 ms per active frame,
+date/time texts rebuilt once a minute, no timers or background; 11.4 - 12.3 kB of 123.8 kB memory used. XX-Large (scalable font) costs about twice Large in always-on. The battery % per day on the watch has not been measured.
+How to measure it yourself:
+1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
+2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load
+   `GARMIN/APPS/LOGS/NoirTime.PRF` with the profiler's *Load* button (Profiling guide).
+3. Real drain: charge to 100 %, wear the watch 24 h with a native face, then 24 h with Noir Time (same always-on setting and activity), compare the battery %.
+
+## 3. Install on your watch (sideload)
+Per the "Your First App" guide: build the PRG (`build/NoirTime.prg`), connect the watch with USB, and copy it to the watch's `GARMIN/APPS` folder. Eject the watch,
+then select *Noir Time* as the watch face using the watch's normal watch-face picker. The Properties/Settings doc says app settings can be changed in the Connect IQ Store app,
+the Garmin Connect app or Garmin Express; whether a **sideloaded** app shows its settings there is not stated in the docs I read - check this on your watch. Test on the real watch for a day, especially always-on mode
+(the review guidelines say apps must be tested before submission).
+
+## 4. GitHub Actions
+`.github/workflows/build.yml` runs on every push to `main`, on tags `v*`, on PRs, and manually.
+
+The `build` job runs in the GitHub Environment **`publish`** (`environment: publish`). Configure once in the repo: create the environment under
+**Settings -> Environments -> publish** and store these four as its *environment secrets* (the release workflow uses the same environment):
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `CIQ_AGREEMENT_HASH` | the hash printed by `connect-iq-sdk-manager agreement view` **after you have read the Garmin SDK licence** (at the time of writing: `CC737BBBA104D7740D5BBCF27D0F6382`; check it yourself). Setting it makes CI accept the licence on your behalf. |
+| Secret | `GARMIN_USERNAME` | your Garmin account e-mail |
+| Secret | `GARMIN_PASSWORD` | its password (consider a dedicated Garmin account) |
+| Secret | `CIQ_DEVELOPER_KEY_B64` | contents of `~/.connectiq-keys/developer_key.der.b64` (created by `scripts/keygen.sh`) |
+
+The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `NoirTime.prg` and `NoirTime.iq` as the artifact **NoirTime-fenix9pro47mm**.
+The `static-checks` job needs no secrets and also runs the host tests. The `build` job runs the Connect IQ unit tests under `xvfb`; without the secrets it is skipped with a warning.
+Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and Garmin SSO may require MFA or block CI IPs. If CI login fails, build locally (section 1).
+
+## 5. Publish to the Connect IQ Store
+**Build store package** (`.github/workflows/release.yml`, manual *Run workflow* with inputs `version` and `whats_new`): checks the four secrets
+(error if one is missing), checks that `version` equals the `version` attribute of `<iq:application>` in `manifest.xml` (max 20 characters),
+installs the SDK, builds with `scripts/build.sh`, runs the unit tests under `xvfb`, makes store images with `scripts/store-assets.sh`
+(`cover.png` 500 x 500 sRGB without transparency on a solid non-black background with 10 px padding, plus every real `docs/screenshots/active_*` / `aod_*`
+frame under 150 KB) and creates the GitHub Release `v<version>` with `NoirTime.iq`, `NoirTime.prg` and the images. The run summary has the
+upload checklist. It does **not** upload to the store - Garmin documents no API or CLI for that (DECISIONS.md D-31).
+
+By hand:
+1. Back up `developer_key.der` - **the same key is needed for every future update**; if lost, the app cannot be updated.
+2. Take real simulator/device screenshots (see `store/screenshots.md`).
+3. Use the `.iq` file (from the *Build store package* release, the CI artifact or `scripts/build.sh`).
+4. Open the Developer Dashboard <https://apps.garmin.com/developer/dashboard> (guide: <https://developer.garmin.com/connect-iq/submit-an-app/>), click *Submit an App* (or upload a new version), type the same version as in `manifest.xml`, upload the `.iq`, paste the text from `store/description.md`, add screenshots/icon, submit.
+5. Review typically takes up to 72 hours; you can preview/download the pending app yourself for testing.
+Uploading and accepting the developer agreement is an action only you can do under your Garmin developer account.
+
+## Changing things
+* Colours / sizes: `resources/settings/settings.xml` (phone) **and** `source/NoirSettings.mc` (watch menu) - keep both lists identical; labels in `resources*/strings/strings.xml`.
+  Defaults in `resources/properties/properties.xml` must be one of the list values.
+* Size -> font mapping and the fit check: `fontCandidates()` / `blockFits()` in `source/NoirLayout.mc` (DECISIONS.md D-17, D-20).
+* Colon colour rule: `NoirLayout.colonColor()` (D-15).
+* Layout / AOD constants: top of `source/NoirLayout.mc` (run the tests after changing them).
+* Steps label, 12/24h handling: `NoirLayout.formatSteps()`, `formatHour()`.
+
+## Licence
+[CC BY-NC 4.0](../LICENSE) (non-commercial). Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI); test fonts Rajdhani and Roboto (SIL OFL, `tests/host/fonts/`).

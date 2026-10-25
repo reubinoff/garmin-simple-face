@@ -63,6 +63,17 @@ class RealScreenshotTests(unittest.TestCase):
                 heights.append(time_block_height(img))
             self.assertLessEqual(abs(heights[0] - heights[1]), 2 * 4 + 2, (name, heights))  # outline pad + shift
 
+    def test_hidden_fields(self):
+        """Toggles: hiding a field lights fewer pixels and never changes the time size (D-28, D-29)."""
+        pairs = [("large_white-white_no-bodybattery", "large_white-white"),
+                 ("medium_white-orange_no-steps", "medium_white-orange"),
+                 ("xlarge_white-cyan_no-stats", "xlarge_white-cyan")]
+        for hidden, full in pairs:
+            for mode in ("active_", "aod_"):
+                h, f = load(mode + hidden + ".png"), load(mode + full + ".png")
+                self.assertLess((h.max(axis=2) > 0).sum(), (f.max(axis=2) > 0).sum(), mode + hidden)
+                self.assertLessEqual(abs(time_block_height(h) - time_block_height(f)), 2 * 4 + 2, mode + hidden)
+
 
 if __name__ == "__main__":
     unittest.main()

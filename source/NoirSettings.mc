@@ -6,7 +6,7 @@ import Toybox.Lang;
 //! and resources/properties/properties.xml - KEEP THE VALUES BELOW IN SYNC WITH THOSE FILES
 //! (checked by tests/host/test_resources.py).
 //!
-//! Battery (DECISIONS.md D-21): the three values are read from Application.Properties once and cached.
+//! Battery (DECISIONS.md D-21): the values are read from Application.Properties once and cached.
 //! The cache is refreshed by reload(), called from AppBase.onSettingsChanged(), after an on-device change
 //! (cycle()) and when the watch face view is shown again (onShow).
 module NoirSettings {
@@ -14,6 +14,9 @@ module NoirSettings {
     const KEY_TIME_SIZE = "TimeSize";
     const KEY_HOUR_COLOR = "HourColor";
     const KEY_MINUTE_COLOR = "MinuteColor";
+    // On/off fields (D-29): Boolean properties, default true.
+    const KEY_SHOW_STEPS = "ShowSteps";
+    const KEY_SHOW_BODY_BATTERY = "ShowBodyBattery";
 
     const SIZE_SMALL = 0;
     const SIZE_MEDIUM = 1;
@@ -27,6 +30,8 @@ module NoirSettings {
     var _timeSize as Number = SIZE_MEDIUM;
     var _hourColor as Number = DEFAULT_COLOR;
     var _minuteColor as Number = DEFAULT_COLOR;
+    var _showSteps as Boolean = true;
+    var _showBodyBattery as Boolean = true;
 
     //! The 16 time colours (24-bit 0xRRGGBB as Dc.setColor takes them), same order and values as the lists in settings.xml.
     function colorValues() as Array<Number> {
@@ -74,8 +79,18 @@ module NoirSettings {
         return DEFAULT_COLOR;
     }
 
-    //! Reads all three properties (Properties.getValue, API 2.4.0) into the cache.
+    //! Parses a stored on/off flag: anything that is not a Boolean becomes true (field shown).
+    function parseFlag(value as Object or Null) as Boolean {
+        if (value instanceof Boolean) {
+            return value as Boolean;
+        }
+        return true;
+    }
+
+    //! Reads all properties (Properties.getValue, API 2.4.0) into the cache.
     function reload() as Void {
+        _showSteps = parseFlag(Application.Properties.getValue(KEY_SHOW_STEPS));
+        _showBodyBattery = parseFlag(Application.Properties.getValue(KEY_SHOW_BODY_BATTERY));
         _timeSize = parseSize(Application.Properties.getValue(KEY_TIME_SIZE));
         _hourColor = parseColor(Application.Properties.getValue(KEY_HOUR_COLOR));
         _minuteColor = parseColor(Application.Properties.getValue(KEY_MINUTE_COLOR));
@@ -101,6 +116,30 @@ module NoirSettings {
     function timeSize() as Number {
         ensureLoaded();
         return _timeSize;
+    }
+
+    function showSteps() as Boolean {
+        ensureLoaded();
+        return _showSteps;
+    }
+
+    function showBodyBattery() as Boolean {
+        ensureLoaded();
+        return _showBodyBattery;
+    }
+
+    function flagOf(key as String) as Boolean {
+        return key.equals(KEY_SHOW_STEPS) ? showSteps() : showBodyBattery();
+    }
+
+    function isFlagKey(key as String) as Boolean {
+        return key.equals(KEY_SHOW_STEPS) || key.equals(KEY_SHOW_BODY_BATTERY);
+    }
+
+    //! Stores an on/off flag (Properties.setValue, API 2.4.0) and refreshes the cache.
+    function setFlag(key as String, enabled as Boolean) as Void {
+        Application.Properties.setValue(key, enabled);
+        reload();
     }
 
     function valueOf(key as String) as Number {

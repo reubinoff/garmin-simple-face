@@ -24,4 +24,8 @@
     <string id="ColorPurple">סגול</string>
     <string id="ColorMagenta">מג'נטה</string>
     <string id="ColorPink">ורוד</string>
+    <string id="ShowStepsTitle">הצג צעדים</string>
+    <string id="ShowBodyBatteryTitle">הצג Body Battery</string>
+    <string id="StateOn">מופעל</string>
+    <string id="StateOff">כבוי</string>
 </strings>

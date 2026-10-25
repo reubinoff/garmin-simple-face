@@ -7,27 +7,34 @@ pixels counted inside the round 454 px screen; share of all 454x454 pixels.
 
 | frame | pixels on | mean luminance |
 |---|---|---|
-| Small, white/cyan, 19:23 | 2.12 % | 1.38 % |
-| Medium, white/orange, 19:27 | 2.34 % | 1.52 % |
-| Large, yellow/white, 19:25 | 2.67 % | 2.07 % |
-| Large, white/white, 19:31 | 2.49 % | 2.01 % |
-| X-Large, white/cyan, 21:28 | 3.78 % | 2.93 % |
-| X-Large, lime/magenta, 21:30 | 3.76 % | 2.21 % |
-| X-Large, white/white, 21:32 | 3.76 % | 3.48 % |
-| XX-Large, white/cyan, 21:29 | 3.93 % | 3.09 % |
-| XX-Large, gold/blue, 21:29 | 3.93 % | 2.24 % |
-| XX-Large, white/white, 21:31 | 3.66 % | 3.37 % |
+| Small, white/cyan, steps + Body Battery | 2.59 % | 1.59 % |
+| Medium, white/orange, steps + Body Battery | 2.94 % | 1.84 % |
+| Medium, white/orange, Body Battery only (steps hidden) | 2.76 % | 1.79 % |
+| Large, yellow/white, steps + Body Battery | 3.07 % | 2.24 % |
+| Large, white/white, steps + Body Battery | 2.85 % | 2.16 % |
+| Large, white/white, steps only (Body Battery hidden) | 2.67 % | 2.07 % |
+| X-Large, white/cyan, steps + Body Battery | 4.05 % | 3.02 % |
+| X-Large, white/cyan, no stats row | 3.65 % | 2.86 % |
+| X-Large, lime/magenta, steps + Body Battery | 4.05 % | 2.35 % |
+| X-Large, white/white, steps + Body Battery | 4.13 % | 3.65 % |
+| XX-Large, white/cyan, steps + Body Battery | 4.39 % | 3.33 % |
+| XX-Large, gold/blue, steps + Body Battery | 4.17 % | 2.37 % |
+| XX-Large, white/white, steps + Body Battery | 4.38 % | 3.91 % |
+
+Frames of 2026-10-25 (10:20-10:29 Asia/Jerusalem, after D-27/D-28: icons, steps 0 and Body Battery 88 from the simulator).
 
 Simulator File > View Screen Heat Map > 24-Hour Simulation (docs/screenshots/burnin24h_*.png):
+
+Rows without a date were measured on 2026-10-24, before the steps/Body Battery icons were added (D-28).
 
 | build | result | peak luminance usage |
 |---|---|---|
 | Small, white/cyan | no screen burn-in detected | 1.19 % |
 | Medium, white/orange | no screen burn-in detected | 1.51 % |
 | Large, yellow/white | no screen burn-in detected | 1.82 % |
-| Large, white/white | no screen burn-in detected | 1.98 % |
+| Large, white/white, steps + Body Battery (2026-10-25) | no screen burn-in detected | 2.15 % |
 | X-Large, white/white | no screen burn-in detected | 3.22 % |
-| XX-Large, white/white | no screen burn-in detected | 3.41 % |
+| XX-Large, white/white, steps + Body Battery (2026-10-25) | no screen burn-in detected | 3.57 % |
 
 ## Full day, host model (font-accurate)
 
@@ -37,8 +44,8 @@ Limits (AMOLED FAQ / UX guidelines): < 10 % of pixels on, < 10 % luminance (Venu
 
 | font-size mapping | size | font chosen | max pixels on | max luminance | longest run (min) |
 |---|---|---|---|---|---|
-| line | small | FONT_NUMBER_MILD | 2.75 % | 1.85 % | 2 |
-| line | medium | FONT_NUMBER_MEDIUM | 3.13 % | 2.27 % | 2 |
-| line | large | FONT_NUMBER_HOT | 3.47 % | 2.56 % | 2 |
-| line | xlarge | FONT_NUMBER_THAI_HOT | 4.80 % | 4.03 % | 2 |
-| line | xxlarge | VECTOR_208 | 5.01 % | 4.27 % | 2 |
+| line | small | FONT_NUMBER_MILD | 3.16 % | 2.05 % | 2 |
+| line | medium | FONT_NUMBER_MEDIUM | 3.54 % | 2.47 % | 2 |
+| line | large | FONT_NUMBER_HOT | 3.69 % | 2.67 % | 2 |
+| line | xlarge | FONT_NUMBER_THAI_HOT | 4.75 % | 4.01 % | 2 |
+| line | xxlarge | VECTOR_208 | 5.26 % | 4.37 % | 2 |
