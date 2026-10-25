@@ -30,7 +30,7 @@ module NoirLayout {
     // percent of the icon height; gaps are percent of the row font height.
     const ICON_HEIGHT_PERCENT = 60;
     const STEPS_ICON_WIDTH_PERCENT = 84;
-    const BODY_BATTERY_ICON_WIDTH_PERCENT = 56;
+    const BODY_BATTERY_ICON_WIDTH_PERCENT = 100;
     const ICON_GAP_PERCENT = 12;
     const GROUP_GAP_PERCENT = 40;
     // The 8 neighbour directions used to draw an outline (dilation) of a text.

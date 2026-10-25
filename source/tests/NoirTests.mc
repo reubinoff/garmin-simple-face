@@ -263,13 +263,13 @@ function testStatsRowWidth(logger as Logger) as Boolean {
     Test.assertEqual(NoirLayout.iconHeight(53), 31);
     Test.assertEqual(NoirLayout.iconHeight(37), 22);
     Test.assertEqual(NoirLayout.stepsIconWidth(53), 26);
-    Test.assertEqual(NoirLayout.bodyBatteryIconWidth(53), 17);
+    Test.assertEqual(NoirLayout.bodyBatteryIconWidth(53), 31);
     Test.assertEqual(NoirLayout.iconGap(53), 6);
     Test.assertEqual(NoirLayout.groupGap(53), 21);
     Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, false, 76), 0);
     Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, false, 76), 26 + 6 + 160);
-    Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, true, 76), 17 + 6 + 76);
-    Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, true, 76), 26 + 6 + 160 + 21 + 17 + 6 + 76);
+    Test.assertEqual(NoirLayout.statsRowWidth(53, false, 160, true, 76), 31 + 6 + 76);
+    Test.assertEqual(NoirLayout.statsRowWidth(53, true, 160, true, 76), 26 + 6 + 160 + 21 + 31 + 6 + 76);
     var fonts = NoirLayout.statsFontCandidates();
     Test.assertEqual(fonts.size(), 3);
     Test.assertEqual(fonts[0], Graphics.FONT_SMALL);

@@ -67,7 +67,9 @@ python3 -m unittest discover -s tests/host -v          # host tests, no SDK need
 CIQ_RESOURCES_XSD=<sdk>/bin/resources.xsd python3 -m unittest discover -s tests/host -v   # + schema validation
 CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py   # font-accurate full day -> docs/burn-in-report.md
 scripts/run-unit-tests.sh                              # Connect IQ unit tests: monkeyc -t, connectiq, monkeydo -t
-xvfb-run -a scripts/run-unit-tests.sh                  # same, headless (simulator needs libwebkit2gtk-4.0, e.g. Ubuntu 22.04)
+                                                       # headless: with no $DISPLAY it starts xvfb-run (+ dbus-run-session) itself;
+                                                       # waits up to 60 s for the simulator port, 3 attempts (D-35;
+                                                       # CIQ_SIM_READY_TIMEOUT, CIQ_SIM_ATTEMPTS). Simulator needs libwebkit2gtk-4.0 (Ubuntu 22.04)
 ```
 The host model uses stand-in OFL fonts by default. With `CIQ_DEVICE_FONTS` pointing at the fonts the SDK manager downloads
 (`device download -d fenix9pro47mm --include-fonts`; not in the repo) it uses the device's own TTFs and matches real simulator frames within 0.1 %.
@@ -134,4 +136,4 @@ Uploading and accepting the developer agreement is an action only you can do und
 * Steps label, 12/24h handling: `NoirLayout.formatSteps()`, `formatHour()`.
 
 ## Licence
-[CC BY-NC 4.0](../LICENSE) (non-commercial). Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI); test fonts Rajdhani and Roboto (SIL OFL, `tests/host/fonts/`).
+[GPL-3.0](../LICENSE) (GNU General Public License v3.0). Third-party: Garmin Connect IQ SDK (Garmin licence), `lindell/connect-iq-sdk-manager-cli` (Apache-2.0, used only in CI); test fonts Rajdhani and Roboto (SIL OFL, `tests/host/fonts/`).

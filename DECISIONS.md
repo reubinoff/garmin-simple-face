@@ -483,7 +483,7 @@ Status: rules VERIFIED-DOC; code check and profiles VERIFIED-ON-BOX; watch batte
 
 * Icons are drawn, not bitmaps: `fillEllipse`, `fillPolygon`, `drawRoundedRectangle`, `fillRectangle`, `setPenWidth` (all API 1.0.0,
   <https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>; `fillPolygon` max 64 points, the bolt uses 6). Steps = two footprints
-  (forefoot + heel ellipses), Body Battery = battery outline with cap and a lightning bolt, in the Garmin style. Size follows the row font
+  (forefoot + heel ellipses), Body Battery = ~~battery outline with cap and a lightning bolt~~ (replaced by D-34: figure with raised arms in an open gauge ring). Size follows the row font
   (icon height 60 % of the font height), colour = the date/stats grey; no resource loads, nothing extra in memory.
 * Always-on: the icons use the same grey and the same shift + row mask as the text (D-19).
 * Both values in one row would have needed a smaller time font on XX-Large. So the time font is chosen against the smallest stats font (`FONT_XTINY`)
@@ -594,6 +594,55 @@ Status: VERIFIED-DOC (rules), VERIFIED-ON-BOX (profile, burn-in); watch battery 
   (<https://forums.garmin.com/developer/connect-iq/f/connect-iq-web-store/402228/developer-key-lost>; this is a forum post, not documentation).
   Status: VERIFIED-DOC.
 
+## D-34 Body Battery icon redrawn in Garmin's Body Battery style; licence switched to GPL-3.0 (2026-10-25)
+
+* Owner feedback: the D-28 icon (battery outline + bolt) looks like the *watch* battery and is misleading; Garmin's Body Battery
+  symbol is something else.
+* Garmin reference: the Body Battery page on garmin.com,
+  <https://www.garmin.com/en-US/garmin-technology/health-science/body-battery/>, hero image
+  <https://static.garmin.com/en_US/garmin_technology/health_science/59030-health_science-body_battery_energy_monitoring-D.jpg>
+  (Body Battery glance on a watch): the symbol is a person with both arms raised inside a segmented gauge ring that is open at the
+  bottom. Garmin's support FAQ on watch-face icons (<https://support.garmin.com/en-US/?faq=agZJiZRjhX2adgWkBVOHI9>) could not be read
+  from the box (Cloudflare check). Status: VERIFIED-DOC (image looked at 2026-10-25).
+* New glyph, own geometry from `Dc` primitives (not a copy of Garmin's bitmap): square box (`BODY_BATTERY_ICON_WIDTH_PERCENT` 56 -> 100);
+  ring = `drawArc` 300 deg counter-clockwise from 300 to 240 (60 deg gap at 6 o'clock), pen `max(2, s/10)`; head = `fillCircle`
+  (r 11 % of the box); body with raised arms = one 10-point `fillPolygon` ("Y": hands up and out, torso down through the ring's gap).
+  `drawArc` is API 1.2.0 (<https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics/Dc.html>); the others are API 1.0.0.
+  Single colour = the stats grey; same AOD shift + row mask (D-19). The steps footprints are unchanged.
+* Effect of the wider icon on the stats font (both values shown; the time font is unchanged at every size, D-28): Medium
+  `FONT_SMALL` -> `FONT_TINY`, XX-Large `FONT_TINY` -> `FONT_XTINY` (host model). With one value hidden nothing changes.
+  Port + tests updated: `tests/host/face_model.py` `draw_body_battery_icon`, `source/tests/NoirTests.mc` `testStatsRowWidth`.
+* Licence: at the owner's request the project licence changed from CC BY-NC 4.0 to **GPL-3.0** (a standard licence GitHub recognises;
+  strict copyleft). `LICENSE` = the official text downloaded unchanged from <https://www.gnu.org/licenses/gpl-3.0.txt>
+  (sha256 3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986); README and docs/DEVELOPMENT.md link
+  <https://www.gnu.org/licenses/gpl-3.0.html>. The CC BY-NC / non-commercial wording is gone.
+* Verified: strict build + `.iq` with `-l 3 -w`, 0 warnings; 23/23 simulator unit tests; 28 host tests OK; all 26 active/aod shots in
+  `docs/screenshots/` regenerated in the simulator (same names; 11:29-11:39 Asia/Jerusalem). Always-on shots, lit pixels / luminance on the
+  round screen, old -> new: Small 3.07 -> 3.00 % / 1.59 -> 1.49 %, Medium 3.52 -> 3.26 % / 1.84 -> 1.66 %, Large 3.41 -> 3.24 % /
+  2.16 -> 1.98 %, XX-Large gold-blue 5.08 -> 4.81 % / 2.37 -> 2.12 % (different minutes, so the digits differ too); all far under 10 %.
+  `docs/burn-in-report.md` (24-hour runs) was measured with the D-28 icon and was not re-run.
+
+## D-35 SECURITY.md; robust simulator start for the unit tests in CI (2026-10-25)
+
+* `SECURITY.md` (GitHub security policy): supported versions (1.0.0 / `main`), reports through GitHub private vulnerability reporting
+  (Security tab -> *Report a vulnerability*,
+  <https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability>),
+  what to include, acknowledgement within a few days, no SLA, scope (watch face, only the `SensorHistory` permission, no personal data off the
+  device). No e-mail address is written; a marked placeholder comment is left for the owner. README links it.
+* CI failure: the GitHub Actions unit-test step printed `Unable to connect to simulator` (the build passed). The script slept a fixed
+  10 s after starting the simulator. `scripts/run-unit-tests.sh` now:
+  * waits until the simulator has a TCP port in LISTEN state in 1234-1238 (read passively from `/proc/net/tcp*`; seen: 1235 and 1236 on
+    the box with SDK 9.3.0), up to `CIQ_SIM_READY_TIMEOUT` = 60 s, then `CIQ_SIM_SETTLE` = 3 s more; stops early if the simulator exits;
+  * runs `monkeydo -t`; with no `PASSED`/`FAILED` summary (e.g. `Unable to connect`) it kills the simulator, starts a new one and
+    retries, up to `CIQ_SIM_ATTEMPTS` = 3;
+  * re-runs itself under `xvfb-run -a -s "-screen 0 1280x1024x24"` when `$DISPLAY` is empty and under `dbus-run-session` when there is no
+    session bus; sets `NO_AT_BRIDGE=1` (the AT-SPI / dbind warnings); simulator output goes to `build/simulator.log`;
+  * keeps the verdict from the printed summary (`monkeydo -t` exits 1 even on a pass) and always stops the simulator it started.
+* `build.yml` and `release.yml` test steps: also install `xauth dbus dbus-x11`, run
+  `dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" scripts/run-unit-tests.sh`, print `build/simulator.log` on failure,
+  `timeout-minutes: 15`. The step stays fatal (no `continue-on-error`). Status: VERIFIED-ON-BOX (23/23 with and without a preset
+  `$DISPLAY`); the GitHub runner is not run from here (G-17).
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -637,3 +686,7 @@ Status: VERIFIED-DOC (rules), VERIFIED-ON-BOX (profile, burn-in); watch battery 
 * After D-27 - D-33 (2026-10-25): strict device build + `.iq` with `-l 3 -w`, no warnings. 23/23 simulator unit tests pass (`PASSED (passed=23, failed=0, errors=0)`;
   Body Battery read 88). 28 host tests pass with device fonts + XSD (27 + 1 skipped without the XSD). New real screenshots, including the
   hidden-field variants. Two 24-hour burn-in simulations and two profiles (D-30). Release workflow checked locally (D-31).
+* After D-34/D-35 (2026-10-25): new Body Battery icon, GPL-3.0 licence, SECURITY.md, robust simulator start. Strict build + `.iq` with
+  `-l 3 -w`, no warnings; 23/23 simulator unit tests through the new `scripts/run-unit-tests.sh` (with `$DISPLAY` set, and with no
+  `$DISPLAY` / session bus so it started `xvfb-run` + `dbus-run-session` itself; the retry path checked with `CIQ_SIM_READY_TIMEOUT=0`);
+  28 host tests OK; 26 screenshots regenerated.

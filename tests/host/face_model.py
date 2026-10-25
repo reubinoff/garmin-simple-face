@@ -307,14 +307,20 @@ def draw_steps_icon(d, x, top, w, h, fill):
 
 
 def draw_body_battery_icon(d, x, top, w, h, fill):
-    """NoirTimeView.drawBodyBatteryIcon: battery outline + terminal + lightning bolt."""
-    pen = max(2, mc_div(h, 12))
-    cap, cap_w = mc_div(h * 12, 100), mc_div(w * 46, 100)
-    d.rectangle((x + mc_div(w - cap_w, 2), top, x + mc_div(w - cap_w, 2) + cap_w - 1, top + cap - 1), fill=fill)
-    bt, bh = top + cap, h - cap
-    d.rounded_rectangle((x, bt, x + w - 1, bt + bh - 1), radius=pen + 1, outline=fill, width=pen)
-    pts = [(60, 16, 56), (22, 56, 56), (47, 56, 56), (38, 86, 86), (78, 44, 44), (53, 44, 44)]
-    d.polygon([(x + mc_div(w * a, 100), bt + mc_div(bh * b, 100)) for a, b, _ in pts], fill=fill)
+    """NoirTimeView.drawBodyBatteryIcon (D-34): figure with raised arms inside a gauge ring open at the bottom."""
+    s = min(w, h)
+    left, y0 = x + mc_div(w - s, 2), top + mc_div(h - s, 2)
+    pen = max(2, mc_div(s, 10))
+    cx, cy = left + mc_div(s, 2), y0 + mc_div(s, 2)
+    r = mc_div(s, 2) - mc_div(pen + 1, 2)
+    # Garmin angles are counter-clockwise from 3 o'clock; PIL's are clockwise. Garmin 300 -> 240 CCW == PIL 120 -> 420.
+    d.arc((cx - r - mc_div(pen, 2), cy - r - mc_div(pen, 2), cx + r + mc_div(pen, 2), cy + r + mc_div(pen, 2)),
+          start=120, end=420, fill=fill, width=pen)
+    hr = max(1, mc_div(s * 11, 100))
+    hy = y0 + mc_div(s * 30, 100)
+    d.ellipse((cx - hr, hy - hr, cx + hr, hy + hr), fill=fill)
+    pts = [(20, 36), (29, 29), (42, 47), (58, 47), (71, 29), (80, 36), (61, 58), (61, 96), (39, 96), (39, 58)]
+    d.polygon([(left + mc_div(s * a, 100), y0 + mc_div(s * b, 100)) for a, b in pts], fill=fill)
 
 
 def render(size, hour_color, minute_color, low_power, hour=10, minute=8, steps=8432, date="Fri 23 Oct",

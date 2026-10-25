@@ -85,10 +85,14 @@ jobs:
         run: scripts/build.sh --out build
 
       - name: Connect IQ unit tests (monkeyc -t, simulator under xvfb, monkeydo -t)
+        timeout-minutes: 15
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.0-37 libsoup2.4-1 libjpeg8 libusb-1.0-0
-          xvfb-run -a scripts/run-unit-tests.sh
+          sudo apt-get install -y -qq xvfb xauth dbus dbus-x11 libwebkit2gtk-4.0-37 libsoup2.4-1 libjpeg8 libusb-1.0-0
+          # D-35: the script waits for the simulator's TCP port (up to 60 s), retries up to 3 times with a fresh simulator,
+          # and runs under a D-Bus session + a 24-bit Xvfb screen.
+          dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" scripts/run-unit-tests.sh || {
+            echo "::group::simulator log"; cat build/simulator.log 2>/dev/null || true; echo "::endgroup::"; exit 1; }
 
       - name: Store images (cover 500x500 sRGB + screenshots under 150 KB; warnings only)
         continue-on-error: true

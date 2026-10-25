@@ -18,7 +18,7 @@ import Toybox.WatchUi;
 //! Battery (D-21): settings, fonts, date text, steps text and the 12/24 h flag are cached; nothing is allocated
 //! per frame except what the system calls return; no timers, no partial updates, no background, no sensors.
 //! Body Battery (D-27, D-30) is read from SensorHistory at most once per minute, only while it is shown; the icons
-//! (D-28) are Dc primitives (fillEllipse / drawRoundedRectangle / fillPolygon), no bitmaps or fonts to load.
+//! (D-28, D-34) are Dc primitives (fillEllipse / drawArc / fillCircle / fillPolygon), no bitmaps or fonts to load.
 class NoirTimeView extends WatchUi.WatchFace {
 
     private var _inLowPower as Boolean = false;
@@ -174,25 +174,34 @@ class NoirTimeView extends WatchUi.WatchFace {
         }
     }
 
-    //! Body Battery icon in the style of Garmin's own: an upright battery outline (Dc.drawRoundedRectangle, pen
-    //! width set with Dc.setPenWidth) with its terminal on top (Dc.fillRectangle) and a lightning bolt inside
-    //! (Dc.fillPolygon, API 1.0.0). Box: x, top, w x h.
+    //! Body Battery icon in Garmin's Body Battery visual language (DECISIONS.md D-34): a person with both arms
+    //! raised inside an energy-gauge ring that is open at the bottom, where the figure stands. It is deliberately
+    //! NOT a device-battery shape. Drawn from primitives (own geometry, not a copy of Garmin's bitmap):
+    //! Dc.drawArc (API 1.2.0) with Dc.setPenWidth, Dc.fillCircle and Dc.fillPolygon (API 1.0.0). Box: x, top, w x h.
     private function drawBodyBatteryIcon(dc as Dc, x as Number, top as Number, w as Number, h as Number) as Void {
-        var pen = h / 12 < 2 ? 2 : h / 12;
-        var cap = h * 12 / 100;
-        var capW = w * 46 / 100;
-        dc.fillRectangle(x + (w - capW) / 2, top, capW, cap);
-        var bodyTop = top + cap;
-        var bodyH = h - cap;
+        var s = w < h ? w : h;
+        var left = x + (w - s) / 2;
+        var y0 = top + (h - s) / 2;
+        var pen = s / 10 < 2 ? 2 : s / 10;
+        var cx = left + s / 2;
+        var cy = y0 + s / 2;
         dc.setPenWidth(pen);
-        dc.drawRoundedRectangle(x + pen / 2, bodyTop + pen / 2, w - pen, bodyH - pen, pen + 1);
+        // Gauge ring: 300 degrees counter-clockwise from 300 to 240, i.e. a 60 degree gap around 6 o'clock.
+        dc.drawArc(cx, cy, s / 2 - (pen + 1) / 2, Graphics.ARC_COUNTER_CLOCKWISE, 300, 240);
+        var headR = s * 11 / 100 < 1 ? 1 : s * 11 / 100;
+        dc.fillCircle(cx, y0 + s * 30 / 100, headR);
+        // Body with raised arms ("Y"): hands up and out, torso down through the ring's gap.
         dc.fillPolygon([
-            [x + w * 60 / 100, bodyTop + bodyH * 16 / 100],
-            [x + w * 22 / 100, bodyTop + bodyH * 56 / 100],
-            [x + w * 47 / 100, bodyTop + bodyH * 56 / 100],
-            [x + w * 38 / 100, bodyTop + bodyH * 86 / 100],
-            [x + w * 78 / 100, bodyTop + bodyH * 44 / 100],
-            [x + w * 53 / 100, bodyTop + bodyH * 44 / 100]
+            [left + s * 20 / 100, y0 + s * 36 / 100],
+            [left + s * 29 / 100, y0 + s * 29 / 100],
+            [left + s * 42 / 100, y0 + s * 47 / 100],
+            [left + s * 58 / 100, y0 + s * 47 / 100],
+            [left + s * 71 / 100, y0 + s * 29 / 100],
+            [left + s * 80 / 100, y0 + s * 36 / 100],
+            [left + s * 61 / 100, y0 + s * 58 / 100],
+            [left + s * 61 / 100, y0 + s * 96 / 100],
+            [left + s * 39 / 100, y0 + s * 96 / 100],
+            [left + s * 39 / 100, y0 + s * 58 / 100]
         ]);
     }
 

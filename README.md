@@ -40,11 +40,15 @@ Connect the watch over USB, copy `build/NoirTime.prg` to the watch's `GARMIN/APP
 - [DECISIONS.md](DECISIONS.md): every technical decision, with the Garmin docs it is based on
 - [Screenshots](docs/screenshots/) and the [burn-in report](docs/burn-in-report.md)
 
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## License
 
-Noir Time © 2026 reubinoff is licensed under
-[Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
-You may use, share and modify it for personal and other non-commercial purposes, with attribution.
-**Commercial use is not permitted.** See [LICENSE](LICENSE) for the full text.
+Noir Time © 2026 reubinoff is licensed under the
+[GNU General Public License v3.0 (GPL-3.0)](https://www.gnu.org/licenses/gpl-3.0.html).
+Any copy or modified version you distribute must also be released under GPL-3.0, with its source code.
+See [LICENSE](LICENSE) for the full text.
 
 Garmin, fēnix and Body Battery are trademarks of Garmin Ltd. This project is not affiliated with Garmin.
