@@ -51,6 +51,10 @@ class NoirTimeView extends WatchUi.WatchFace {
     private var _minuteText as String = "";
     private var _fieldTexts as Array<String or Null> = new Array<String or Null>[NoirFields.COUNT];
     private var _fieldsMinute as Number = -1;
+    // Pixel width of each shown field ([icon] text), indexed by field id; re-measured only after the field texts
+    // were re-read (once per minute, or after a layout / settings change), not on every frame (battery, D-42).
+    private var _fieldWidths as Array<Number> = new Array<Number>[NoirFields.COUNT];
+    private var _widthsValid as Boolean = false;
 
     function initialize() {
         WatchFace.initialize();
@@ -126,6 +130,11 @@ class NoirTimeView extends WatchUi.WatchFace {
         var justifyCenter = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         dc.drawText(centerX, top - _spacing - _dateHeight / 2, _dateFont, _dateText, justifyCenter);
         var rowY = top + _timeLine + _spacing + _rowHeight / 2;
+        if (!_widthsValid) {
+            measureFields(dc, _row1);
+            measureFields(dc, _row2);
+            _widthsValid = true;
+        }
         if (_row1.size() > 0) {
             drawRow(dc, centerX, rowY, _row1, textColor);
         }
@@ -139,13 +148,11 @@ class NoirTimeView extends WatchUi.WatchFace {
     }
 
     //! "[icon] text  [icon] text" centred on centerX. Colour is already set (grey / dim grey in always-on).
+    //! Uses the cached _fieldWidths (measureFields): no allocation and no text measuring per frame.
     private function drawRow(dc as Dc, centerX as Number, y as Number, fields as Array<Number>, color as Number) as Void {
         var h = _rowHeight;
-        var widths = new Array<Number>[fields.size()];
-        for (var i = 0; i < fields.size(); i++) {
-            widths[i] = NoirLayout.fieldWidth(fields[i], h, dc.getTextWidthInPixels(textOf(fields[i]), _rowFont));
-        }
-        var x = centerX - NoirLayout.rowWidth(h, widths[0], fields.size() > 1 ? widths[1] : 0) / 2;
+        var x = centerX - NoirLayout.rowWidth(h, _fieldWidths[fields[0]] as Number,
+            fields.size() > 1 ? _fieldWidths[fields[1]] as Number : 0) / 2;
         var iconH = NoirLayout.iconHeight(h);
         var iconTop = y - iconH / 2;
         var gap = NoirLayout.iconGap(h);
@@ -155,7 +162,15 @@ class NoirTimeView extends WatchUi.WatchFace {
             var w = NoirLayout.iconWidth(field, h);
             drawIcon(dc, field, x, iconTop, w, iconH, color);
             dc.drawText(x + w + gap, y, _rowFont, textOf(field), justifyLeft);
-            x += widths[i] + NoirLayout.groupGap(h);
+            x += (_fieldWidths[field] as Number) + NoirLayout.groupGap(h);
+        }
+    }
+
+    //! Measures the shown fields once after their texts changed (getTextWidthInPixels, API 1.0.0).
+    private function measureFields(dc as Dc, fields as Array<Number>) as Void {
+        for (var i = 0; i < fields.size(); i++) {
+            _fieldWidths[fields[i]] = NoirLayout.fieldWidth(fields[i], _rowHeight,
+                dc.getTextWidthInPixels(textOf(fields[i]), _rowFont));
         }
     }
 
@@ -472,6 +487,7 @@ class NoirTimeView extends WatchUi.WatchFace {
             _fieldsMinute = minuteOfDay;
             readFields(_row1);
             readFields(_row2);
+            _widthsValid = false;
         }
     }
 

@@ -76,6 +76,16 @@ jobs:
       - name: Install Connect IQ SDK 9.3.0 and the device files of every manifest product
         run: scripts/install-sdk.sh
 
+      # Required every release (docs/battery-report.md, DEVELOPMENT.md "Battery check"): fails the release if the code gains
+      # per-second updates / timers / background / sensor listeners, or the always-on screen breaks the AMOLED limits
+      # (< 10 % pixels on, < 10 % luminance, no pixel on > 3 min). Uses the device RobotoCondensed the SDK manager just downloaded.
+      # The simulator's GUI profiler has no documented headless mode, so it stays a manual step (docs/battery-report.md section 5).
+      - name: Battery check (static audit + AOD burn-in limits)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq python3-numpy python3-pil
+          scripts/battery-audit.sh
+          (cd tests/host && CIQ_DEVICE_FONTS="$HOME/.Garmin/ConnectIQ/Fonts" python3 -m unittest -v test_burnin)
+
       - name: Write developer key (never printed, never uploaded)
         run: |
           mkdir -p "$RUNNER_TEMP/keys"
@@ -129,6 +139,7 @@ jobs:
             echo "- [ ] Type exactly the same version: \`$INPUT_VERSION\`"
             echo "- [ ] Attach \`cover.png\` and the \`screenshot_*\` images from the release"
             echo "- [ ] Hero image (\`hero_1440x720.png\`) and the two device icons (\`icon_64color_128.png\`, \`icon_24bit_128.png\`) are attached to the release too"
+            echo "- [ ] **Battery check** (required every release): the automatic audit + AOD limits passed in this run; also re-run \`tests/host/burnin_report.py 1440\`, update \`docs/battery-report.md\`, and do the simulator profiler run (DEVELOPMENT.md section 5)"
             echo "- [ ] Paste the What's New text and **submit for review**"
             echo
             echo "Every update must be signed with the same developer key (secret CIQ_DEVELOPER_KEY_B64) - keep a backup of it."

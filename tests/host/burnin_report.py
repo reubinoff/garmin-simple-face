@@ -7,6 +7,9 @@
   (white / white), with the default fields (steps, Body Battery) and with two field rows (steps, Body Battery,
   heart rate). The time digits are the real embedded Bebas Neue fonts; the date / field text is RobotoCondensed
   (device file with CIQ_DEVICE_FONTS, else a stand-in).
+* Active (high-power) frames, same fields and colours, sampled at every hour x minutes :00 :08 :18 :28 :38 :48 :58
+  (168 frames per row): lit pixels matter less there (about ten seconds after a wrist raise) but are reported for the
+  battery report (docs/battery-report.md).
 
   CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py [minutes]
 """
@@ -31,7 +34,21 @@ def real_frame(path):
 
 real = [(os.path.basename(p)[4:-4],) + real_frame(p) for p in sorted(glob.glob(os.path.join(SHOTS, "aod_*.png")))]
 CONFIGS = {"steps + Body Battery": (1, 2, 0), "steps + Body Battery / heart rate": (1, 2, 3)}
+ACTIVE_TIMES = [(h, mm) for h in range(24) for mm in (0, 8, 18, 28, 38, 48, 58)]
+
+
+def active_max(size, cfg, texts):
+    lay = m.choose_layout(size, *cfg)
+    lit = lum = 0.0
+    for h, mm in ACTIVE_TIMES:
+        arr = m.render(size, 0xFFFFFF, 0xFFFFFF, False, hour=h, minute=mm, layout=lay, texts=texts)
+        lit = max(lit, m.lit_fraction(arr)[0])
+        lum = max(lum, m.luminance_fraction(arr))
+    return lit, lum
+
+
 rows = []
+active_rows = []
 for label, cfg in CONFIGS.items():
     for size in m.SIZES:
         lay = m.choose_layout(size, *cfg)
@@ -40,6 +57,9 @@ for label, cfg in CONFIGS.items():
         lit, lum, run = m.burn_in_run(size, 0xFFFFFF, 0xFFFFFF, 0, minutes, *cfg, texts=texts)
         rows.append((label, m.SIZE_NAMES[size], lay.time_font.name, lit, lum, run))
         print(rows[-1], flush=True)
+        a_lit, a_lum = active_max(size, cfg, texts)
+        active_rows.append((label, m.SIZE_NAMES[size], lay.time_font.name, a_lit, a_lum))
+        print(active_rows[-1], flush=True)
 
 out = os.path.join(m.ROOT, "docs", "burn-in-report.md")
 with open(out, "w", encoding="utf-8") as fh:
@@ -59,4 +79,11 @@ with open(out, "w", encoding="utf-8") as fh:
     fh.write("|---|---|---|---|---|---|\n")
     for label, size, name, lit, lum, run in rows:
         fh.write(f"| {label} | {size} | {name} | {100 * lit:.2f} % | {100 * lum:.2f} % | {run} |\n")
+    fh.write("\n## Active (high-power) frames, host model\n\n")
+    fh.write(f"Same fields, colours and fonts; {len(ACTIVE_TIMES)} active frames per row (every hour at :00 :08 :18 :28 :38 :48 :58). "
+             "Active mode lasts about ten seconds after a wrist raise (WatchFace API doc), so this is for reference; the burn-in "
+             "limits apply to always-on only.\n\n")
+    fh.write("| fields | size | time font | max pixels on | max luminance |\n|---|---|---|---|---|\n")
+    for label, size, name, lit, lum in active_rows:
+        fh.write(f"| {label} | {size} | {name} | {100 * lit:.2f} % | {100 * lum:.2f} % |\n")
 print("written", out)

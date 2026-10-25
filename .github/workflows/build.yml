@@ -26,6 +26,10 @@ jobs:
         run: |
           sudo apt-get install -y -qq python3-numpy python3-pil python3-lxml   # PEP 668: no pip into system python
           python3 -m unittest discover -s tests/host -v
+      - name: Battery check (static audit + AOD burn-in limits; required every release, docs/battery-report.md)
+        run: |
+          scripts/battery-audit.sh
+          (cd tests/host && python3 -m unittest -v test_burnin)
       - name: No signing keys committed
         run: |
           if git ls-files | grep -Ei '\.(der|pem|b64)$|developer_key'; then

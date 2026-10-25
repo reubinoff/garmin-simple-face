@@ -21,12 +21,13 @@ resources/              strings, properties.xml (TimeSize, HourColor, MinuteColo
 resources-round-WxH/    generated Bebas Neue time fonts per screen (scripts/make_fonts.py, D-38)
 assets/fonts/BebasNeue/ source TTF + SIL OFL 1.1 licence
 resources-heb/          Hebrew settings strings
-scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh, run-unit-tests.sh, store-assets.sh, make_fonts.py
+scripts/                keygen.sh, install-sdk.sh, build.sh, run-simulator.sh, run-unit-tests.sh, store-assets.sh, make_fonts.py, battery-audit.sh
 .github/workflows/      build.yml  (static checks + host tests; signed build + unit tests + artifacts)
                         release.yml  ("Build store package": manual; signed .iq + store images on a GitHub Release)
 store/                  store description, release notes, screenshot checklist
 docs/screenshots/       REAL simulator screenshots (SDK 9.3.0, device files + fonts)
 docs/burn-in-report.md  real always-on frames + full-day model report (tests/host/burnin_report.py)
+docs/battery-report.md  battery report: method, lit pixels, code audit, per-minute work, what is still open (redo every release)
 ```
 
 ## 1. Build locally
@@ -68,7 +69,8 @@ Check, and take real screenshots into [`screenshots/`](screenshots/):
 ```bash
 python3 -m unittest discover -s tests/host -v          # host tests, no SDK needed (numpy, Pillow, lxml)
 CIQ_RESOURCES_XSD=<sdk>/bin/resources.xsd python3 -m unittest discover -s tests/host -v   # + schema validation
-CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py   # font-accurate full day -> docs/burn-in-report.md
+CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py   # font-accurate full day + active frames -> docs/burn-in-report.md
+scripts/battery-audit.sh                               # static battery audit of source/ + manifest permissions (CI + release)
 scripts/run-unit-tests.sh                              # Connect IQ unit tests: monkeyc -t, connectiq, monkeydo -t
                                                        # headless: with no $DISPLAY it starts xvfb-run (+ dbus-run-session) itself;
                                                        # waits up to 60 s for the simulator port, 3 attempts (D-35;
@@ -80,9 +82,12 @@ The host model draws the time with the real embedded Bebas Neue fonts. For the d
 Last run: `PASSED (passed=26, failed=0, errors=0)` on 10 devices (D-41); note that `monkeydo -t` exits 1 even then, the script reads the summary.
 
 ## Battery
-What the face does to keep the drain low (details and doc links: DECISIONS.md D-21): no `onPartialUpdate`, no timers, no background service,
-no sensor listeners, one bitmap time font (graphics pool on API 4+) and the system RobotoCondensed, looked up only when the size or a field changes; settings cached and re-read only when they change; date/time and field strings rebuilt once a minute; in always-on it draws once a minute with 2.5 - 3.6 % of the pixels lit (simulator frames; full-day model worst case 4.3 %, docs/burn-in-report.md).
-Simulator profiler (D-21, D-26; measured BEFORE the D-38 font / D-39 fields, not re-measured - gap G-31): about 28 / 38 / 55 ms of work per always-on minute for Large / X-Large / XX-Large, about 12 - 15 ms per active frame,
+**Full report: [docs/battery-report.md](battery-report.md)** (method, lit-pixel table, code audit with file:line evidence, per-minute work,
+what is still open). Battery testing is a **required step of every release** (section 5, "Battery check").
+
+What the face does to keep the drain low (details and doc links: DECISIONS.md D-21, D-42): no `onPartialUpdate`, no timers, no background service,
+no sensor listeners, one bitmap time font (graphics pool on API 4+) and the system RobotoCondensed, looked up only when the size or a field changes; settings cached and re-read only when they change; date/time and field strings rebuilt once a minute, field widths measured once a minute (D-42), only shown fields read; in always-on it draws once a minute with at most 4.33 % of the pixels lit (full-day model, all sizes, default and two-row fields; real frames 2.5 - 3.6 %; docs/burn-in-report.md).
+Simulator profiler (D-21, D-26, D-30; measured BEFORE the D-38 font / D-39 fields, not re-measured - the GUI simulator does not run on the Debian 13 build box, gap G-31): about 28 / 38 / 55 ms of work per always-on minute for Large / X-Large / XX-Large (D-30 with the stats row: ~29 / ~66 ms Large / XX-Large), about 12 - 16 ms per active frame,
 date/time texts rebuilt once a minute, no timers or background; memory now: see D-41. The battery % per day on the watch has not been measured.
 How to measure it yourself:
 1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
@@ -110,16 +115,26 @@ The `build` job runs in the GitHub Environment **`publish`** (`environment: publ
 | Secret | `CIQ_DEVELOPER_KEY_B64` | contents of `~/.connectiq-keys/developer_key.der.b64` (created by `scripts/keygen.sh`) |
 
 The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `NoirTime.prg` (fenix9pro47mm) and `NoirTime.iq` (all products) as the artifact **NoirTime-fenix9pro47mm**.
-The `static-checks` job needs no secrets and also runs the host tests. The `build` job runs the Connect IQ unit tests under `xvfb`; without the secrets it is skipped with a warning.
+The `static-checks` job needs no secrets and also runs the host tests and the **battery check** (`scripts/battery-audit.sh` + `tests/host/test_burnin.py`). The `build` job runs the Connect IQ unit tests under `xvfb`; without the secrets it is skipped with a warning.
 Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and Garmin SSO may require MFA or block CI IPs. If CI login fails, build locally (section 1).
 
 ## 5. Publish to the Connect IQ Store
 **Build store package** (`.github/workflows/release.yml`, manual *Run workflow* with inputs `version` and `whats_new`): checks the four secrets
-(error if one is missing), checks that `version` equals the `version` attribute of `<iq:application>` in `manifest.xml` (max 20 characters),
-installs the SDK, builds with `scripts/build.sh`, runs the unit tests under `xvfb`, makes store images with `scripts/store-assets.sh`
+(error if one is missing), writes `version` (max 20 characters) into the `version` attribute of `<iq:application>` in `manifest.xml`,
+installs the SDK, runs the **battery check** (`scripts/battery-audit.sh` + the AOD burn-in limits test with the device fonts), builds with `scripts/build.sh`, runs the unit tests under `xvfb`, makes store images with `scripts/store-assets.sh`
 (`cover.png` 500 x 500 sRGB without transparency on a solid non-black background with 10 px padding, plus every real `docs/screenshots/active_*` / `aod_*`
 frame under 150 KB) and creates the GitHub Release `v<version>` with `NoirTime.iq`, `NoirTime.prg` and the images. The run summary has the
 upload checklist. It does **not** upload to the store - Garmin documents no API or CLI for that (DECISIONS.md D-31).
+
+### Battery check (required every release)
+Do this for **every** release, before uploading the `.iq`, and update [docs/battery-report.md](battery-report.md) with the results:
+- [ ] `CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py 1440` - re-run the host burn-in model (about 5 min); commit the regenerated `docs/burn-in-report.md`.
+- [ ] Confirm every always-on figure is **< 10 % pixels on** and < 10 % luminance, longest on-run <= 3 min (all sizes, default and two-row fields).
+- [ ] `scripts/battery-audit.sh` passes, and re-read the code audit of docs/battery-report.md section 3 for every changed file (no new per-frame allocation, string building or sensor read; reads only for shown fields, once a minute).
+- [ ] On a machine where the simulator GUI runs (Ubuntu 22.04 / the SDK Manager on a PC) or on the watch: **File -> View Profiler** run (section "Battery" above, docs/battery-report.md section 5); compare ms per always-on minute with the last release.
+- [ ] Before a big change ships: 24 h real-drain comparison on the watch (docs/battery-report.md section 6).
+
+The automatic part (audit + AOD limits) also runs in `build.yml` (every push) and `release.yml` (every store package); a failure stops the release.
 
 By hand:
 1. Back up `developer_key.der` - **the same key is needed for every future update**; if lost, the app cannot be updated.

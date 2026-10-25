@@ -906,6 +906,36 @@ Memory (simulator status bar "used / available", watch-face app, active mode, fi
   pairs, field configurations) and `docs/screenshots/devices/` (466 / 416 / 390 / 360 AMOLED with always-on, 280 / 260 / 240 / 218 /
   208 MIP); quantised to 256 colours, each < 31 kB. The old D-26 `burnin24h_*` / `profiler_*` frames were removed (old font).
 
+## D-42 Battery re-check for the Bebas Neue font + configurable fields; battery check made a release step (2026-10-25)
+
+Full write-up: **[docs/battery-report.md](docs/battery-report.md)**. Rules as in D-21 / D-26 (app types
+<https://developer.garmin.com/connect-iq/connect-iq-basics/app-types/>, WatchFace update rate
+<https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFace.html>, AMOLED FAQ
+<https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>, profiling
+<https://developer.garmin.com/connect-iq/core-topics/profiling/>).
+
+* **Lit pixels re-measured** (`CIQ_DEVICE_FONTS=~/.Garmin/ConnectIQ/Fonts python3 tests/host/burnin_report.py 1440`, device RobotoCondensed,
+  white / white, 1440 always-on minutes): always-on max 2.98 / 3.38 / 3.74 / 4.03 / 4.31 % pixels on (Small - XX-Large, steps + Body Battery),
+  3.30 / 3.69 / 4.06 / 4.33 / 4.33 % with a heart-rate row; max luminance 3.36 %; longest on-run 2 min. All under the 10 % / 3 min limits.
+  Active frames (new table in `docs/burn-in-report.md`): 7.1 - 17.9 % pixels on.
+* **Code audit** (docs/battery-report.md section 3): no `onPartialUpdate`, `Timer`, background, web, sensor listeners or animation;
+  layout / font loading only on a size or field change; date / time strings and field values once per minute, only shown fields.
+  14 draw calls per active frame and 185 per always-on minute with the default fields (152 of them the 1-px row mask).
+* **Regression found and fixed:** D-39's `drawRow` allocated a width array and called `getTextWidthInPixels` for every shown field on
+  every frame (D-30 had cached that width). Now `measureFields` measures once after the field texts change into a preallocated array
+  (`_fieldWidths`, `_widthsValid`); `drawRow` allocates nothing. Pixel output unchanged (host tests 34 OK); strict builds
+  (`-l 3 -w -r`) fenix9pro47mm and fr245 and the store export (`-e`, 52 of 52 devices) succeed with 0 warnings. The Connect IQ
+  simulator unit tests were not run on the box (no simulator, see below); CI runs them.
+* **No headless profiler:** the profiling guide documents only the simulator GUI (*File -> View Profiler*) and on-device `.PRF` files,
+  `monkeydo` (SDK 9.3.0) has only `-n`, `-a`, `-t`, and the power-budget callback concerns only `onPartialUpdate`
+  (<https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFaceDelegate.html>). The SDK 9.3.0 simulator does not start on the
+  Debian 13 build box (needs libwebkit2gtk-4.0, libsoup-2.4, libjavascriptcoregtk-4.0, libjpeg8). So the profiler ms per minute stay open (G-31).
+* **Release step:** `scripts/battery-audit.sh` (static audit of `source/` + manifest permissions) and `tests/host/test_burnin.py` run as a
+  "Battery check" step in `build.yml` (every push) and `release.yml` (every store package, with the device fonts); the manual part is the
+  "Battery check (required every release)" checklist in docs/DEVELOPMENT.md section 5.
+
+Status: rules VERIFIED-DOC; lit pixels and code audit VERIFIED-ON-BOX; profiler and watch battery % UNVERIFIED (G-31, G-15).
+
 ## Open gaps
 
 | # | Gap | Why | Resolution |
@@ -939,7 +969,7 @@ Memory (simulator status bar "used / available", watch-face app, active mode, fi
 | G-28 | Whether a watch face needs the SensorHistory permission for Body Battery / stress at all | kept as in D-27 | none needed unless Garmin says otherwise |
 | G-29 | Steps (and calories, distance) show 0 in the simulator frames | simulator activity data not set (as G-19) | set *Simulation -> Activity Data* or check on the watch |
 | G-30 | No side-by-side comparison with *Pretty Simple* on the same watch | only its store pictures were seen | install both on the watch and compare |
-| G-31 | Profiler numbers (D-21 / D-26) and the 24 h burn-in heat-map frames were taken with the old system fonts | removed with the old screenshots | re-run the profiler and the heat map with the new font |
+| G-31 | **Narrowed 2026-10-25 (D-42):** lit-pixel / burn-in model and code audit RE-DONE for the Bebas Neue + fields build (always-on max 4.33 %, docs/battery-report.md). Still open: simulator GUI profiler ms per minute and the 24 h burn-in heat-map frames with the new font, and the real 24 h drain on the watch | the SDK 9.3.0 simulator GUI does not run on the Debian 13 build box; Garmin documents no headless profiler | profiler run on Ubuntu 22.04 / SDK Manager PC or a `-k` build on the watch (docs/battery-report.md section 5); 24 h comparison on the watch |
 | G-32 | D-29's two show/hide toggles are superseded by D-39 | old `ShowSteps` / `ShowBodyBattery` values are ignored after the upgrade | none |
 | G-17 | CI `build` job / `release.yml` (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
