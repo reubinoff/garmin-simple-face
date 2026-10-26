@@ -159,8 +159,8 @@ render correctly in Hebrew (RTL ordering of `"$1$ $2$ $3$"`) is **UNVERIFIED** (
 | Step | Command | Source |
 |---|---|---|
 | Developer key (RSA 4096, DER) | `openssl genrsa -out developer_key.pem 4096` + `openssl pkcs8 -topk8 -inform PEM -outform DER -in developer_key.pem -out developer_key.der -nocrypt` | `reference-guides/monkey-c-command-line-setup/` ; `connect-iq-basics/getting-started/` ("must be a RSA 4096 bit private key") |
-| Build PRG | `monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime.prg -y KEY -l 3 -w -r` | `monkey-c/compiler-options/` (`-d -f -o -y -l -w -r`) |
-| Export for the store | `monkeyc -e -f monkey.jungle -o build/NoirTime.iq -y KEY -l 3 -w` | `-e / --package-app` ("IQ file for uploading to the app store"); the community CLI README uses the same form |
+| Build PRG | `monkeyc -d fenix9pro47mm -f monkey.jungle -o build/CleanAir.prg -y KEY -l 3 -w -r` | `monkey-c/compiler-options/` (`-d -f -o -y -l -w -r`) |
+| Export for the store | `monkeyc -e -f monkey.jungle -o build/CleanAir.iq -y KEY -l 3 -w` | `-e / --package-app` ("IQ file for uploading to the app store"); the community CLI README uses the same form |
 | Simulator | `connectiq` then `monkeydo build/x.prg fenix9pro47mm` | command-line setup page |
 | Sideload | copy the `.prg` to the watch's `GARMIN/APPS` directory | `connect-iq-basics/your-first-app/` |
 | Java | 11 or higher (docs); box run used Temurin 21 and `monkeyc` 9.3.0 started fine | command-line setup page; VERIFIED-ON-BOX |
@@ -178,7 +178,7 @@ Keep the developer key: "You will need to use the same key to sign updates to an
 ## D-14 CI (GitHub Actions)
 
 * Job `static-checks` (no secrets): XML well-formedness, `bash -n` on scripts, host tests (D-22), no key files tracked.
-* Job `build` (skipped with a warning when secrets are missing): Java 21, Go (to `go install` the pinned CLI), `scripts/install-sdk.sh`, key from secret `CIQ_DEVELOPER_KEY_B64`, `scripts/build.sh`, Connect IQ unit tests under `xvfb`, upload `NoirTime.prg` and `NoirTime.iq` as an artifact.
+* Job `build` (skipped with a warning when secrets are missing): Java 21, Go (to `go install` the pinned CLI), `scripts/install-sdk.sh`, key from secret `CIQ_DEVELOPER_KEY_B64`, `scripts/build.sh`, Connect IQ unit tests under `xvfb`, upload `CleanAir.prg` and `CleanAir.iq` as an artifact.
 * `CIQ_AGREEMENT_HASH` is read from `secrets` (it was `vars` before 2026-10-25). Job `build` runs in the GitHub Environment `publish` (`environment: publish`, added 2026-10-25): the owner stores `GARMIN_USERNAME`, `GARMIN_PASSWORD`, `CIQ_DEVELOPER_KEY_B64` as environment secrets there; `static-checks` has no environment.
 * Garmin does not document a CI procedure; Garmin login in CI is therefore a **community pattern** (D-03). Risk: Garmin SSO may require MFA or block datacenter IPs (gap G-8).
 * Action majors (`checkout@v7`, `setup-java@v6`, `setup-go@v7`, `upload-artifact@v7`) are the existing latest majors as of 2026-10-23 (checked via the GitHub API/tags).

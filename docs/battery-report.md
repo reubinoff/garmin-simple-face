@@ -137,13 +137,13 @@ The SDK 9.3.0 simulator binary needs libwebkit2gtk-4.0 / libsoup-2.4 / libjavasc
 build box) no longer ships; it runs on Ubuntu 22.04 (the CI runner image used by `build.yml` / `release.yml`) or a developer PC with
 the SDK Manager. Steps (as in [DEVELOPMENT.md](DEVELOPMENT.md#battery)):
 
-1. Build a profiling PRG: `monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`.
-2. Start the simulator, run the PRG (`monkeydo build/NoirTime-prof.prg fenix9pro47mm`), set white / white, XX-Large, steps + Body Battery
+1. Build a profiling PRG: `monkeyc -d fenix9pro47mm -f monkey.jungle -o build/CleanAir-prof.prg -y KEY -l 3 -w -k`.
+2. Start the simulator, run the PRG (`monkeydo build/CleanAir-prof.prg fenix9pro47mm`), set white / white, XX-Large, steps + Body Battery
    (+ heart rate for the 2-row case).
 3. **File -> View Profiler**, *Start*; about 1 min active, then **Settings > Display Mode > Always-On** for 5+ minutes; *Stop*.
 4. Record `onUpdate` calls / average, `drawOutlinedText` total / calls, `drawRow`, `measureFields` (must be called about once per
    minute, not per frame), `updateLayout` (body only on a change), `Gregorian.info` (once per minute). Compare with section 4.
-5. On the watch: sideload the `-k` build, wear it, load `GARMIN/APPS/LOGS/NoirTime.PRF` with the profiler's *Load* button.
+5. On the watch: sideload the `-k` build, wear it, load `GARMIN/APPS/LOGS/CleanAir.PRF` with the profiler's *Load* button.
 
 ## 6. Still open
 

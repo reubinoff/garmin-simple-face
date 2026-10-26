@@ -28,12 +28,12 @@ You need the [Connect IQ SDK](https://developer.garmin.com/connect-iq/sdk/) (9.3
 
 ```sh
 scripts/keygen.sh     # once: creates your developer key
-scripts/build.sh      # -> build/NoirTime.prg (fenix9pro47mm; CIQ_DEVICE=<id> for another) and build/NoirTime.iq (all watches)
+scripts/build.sh      # -> build/CleanAir.prg (fenix9pro47mm; CIQ_DEVICE=<id> for another) and build/CleanAir.iq (all watches)
 ```
 
 ## Install
 
-Connect the watch over USB, copy `build/NoirTime.prg` to the watch's `GARMIN/APPS` folder, eject, then pick
+Connect the watch over USB, copy `build/CleanAir.prg` to the watch's `GARMIN/APPS` folder, eject, then pick
 **Clean Air** from the watch faces list.
 
 

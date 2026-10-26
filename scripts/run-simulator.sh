@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 KEY="${CIQ_DEVELOPER_KEY_PATH:-$HOME/.connectiq-keys/developer_key.der}"
 if [ "${1:-}" = "--key" ]; then KEY="$2"; fi
 mkdir -p build
-monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-debug.prg -y "$KEY" -l 3 -w
+monkeyc -d fenix9pro47mm -f monkey.jungle -o build/CleanAir-debug.prg -y "$KEY" -l 3 -w
 connectiq &
 sleep 8   # give the simulator time to start
-monkeydo build/NoirTime-debug.prg fenix9pro47mm
+monkeydo build/CleanAir-debug.prg fenix9pro47mm

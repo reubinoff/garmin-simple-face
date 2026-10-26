@@ -26,7 +26,7 @@ READY_TIMEOUT="${CIQ_SIM_READY_TIMEOUT:-60}"
 ATTEMPTS="${CIQ_SIM_ATTEMPTS:-3}"
 SETTLE="${CIQ_SIM_SETTLE:-3}"
 mkdir -p build
-monkeyc -d "$DEVICE" -f monkey.jungle -o build/NoirTime-test.prg -y "$KEY" -l 3 -w -t
+monkeyc -d "$DEVICE" -f monkey.jungle -o build/CleanAir-test.prg -y "$KEY" -l 3 -w -t
 
 SIM=""
 stop_sim() {
@@ -70,7 +70,7 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
   if ! start_sim; then continue; fi
   # monkeydo -t exits 1 even when every test passes (observed with SDK 9.3.0, not documented), so the verdict
   # comes from the printed summary below, not from its exit code.
-  monkeydo build/NoirTime-test.prg "$DEVICE" -t 2>&1 | tee build/unit-tests.log || true
+  monkeydo build/CleanAir-test.prg "$DEVICE" -t 2>&1 | tee build/unit-tests.log || true
   if grep -q "PASSED\|FAILED" build/unit-tests.log; then result=done; break; fi
   if grep -qi "unable to connect\|connection refused" build/unit-tests.log; then
     echo "monkeydo could not connect to the simulator; restarting it" >&2

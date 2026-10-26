@@ -1,7 +1,7 @@
 name: Build store package
 
 # Manual button (Actions -> "Build store package" -> Run workflow). Builds, signs, tests and packages the watch face and
-# attaches NoirTime.iq, NoirTime.prg and store images to a GitHub Release. It does NOT upload to the Connect IQ Store:
+# attaches CleanAir.iq, CleanAir.prg and store images to a GitHub Release. It does NOT upload to the Connect IQ Store:
 # Garmin documents no publish API or CLI; the .iq is uploaded by hand in the Developer Dashboard
 # (https://developer.garmin.com/connect-iq/submit-an-app/, DECISIONS.md D-31).
 on:
@@ -76,6 +76,9 @@ jobs:
       - name: Install Connect IQ SDK 9.3.0 and the device files of every manifest product
         run: scripts/install-sdk.sh
 
+      - name: Old product name not user-facing (artifacts are CleanAir.iq / CleanAir.prg)
+        run: scripts/check-names.sh
+
       # Required every release (docs/battery-report.md, DEVELOPMENT.md "Battery check"): fails the release if the code gains
       # per-second updates / timers / background / sensor listeners, or the always-on screen breaks the AMOLED limits
       # (< 10 % pixels on, < 10 % luminance, no pixel on > 3 min). Uses the device RobotoCondensed the SDK manager just downloaded.
@@ -118,8 +121,8 @@ jobs:
         run: |
           notes="$RUNNER_TEMP/notes.md"
           if [ -n "$INPUT_WHATS_NEW" ]; then printf '%s\n' "$INPUT_WHATS_NEW" > "$notes"
-          else printf 'Clean Air %s for the fenix 9 Pro 47mm. Store package (NoirTime.iq), sideload build (NoirTime.prg) and store images.\n' "$INPUT_VERSION" > "$notes"; fi
-          files=(build/NoirTime.iq build/NoirTime.prg)
+          else printf 'Clean Air %s. Store package for all 38 watches (CleanAir.iq); sideload build for fēnix 9 Pro 47mm (CleanAir.prg).\n' "$INPUT_VERSION" > "$notes"; fi
+          files=(build/CleanAir.iq build/CleanAir.prg)
           if compgen -G "store-assets/*" > /dev/null; then files+=(store-assets/*); fi
           # Re-running the same version refreshes the release instead of failing on an existing tag.
           gh release delete "v$INPUT_VERSION" --yes --cleanup-tag || true
@@ -134,7 +137,7 @@ jobs:
             echo "Upload to the Connect IQ Store is **manual** (Garmin has no publish API or CLI)."
             echo "Garmin Developer Dashboard: https://apps.garmin.com/developer/dashboard"
             echo
-            echo "- [ ] Download **NoirTime.iq** from the release [v$INPUT_VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$INPUT_VERSION)"
+            echo "- [ ] Download **CleanAir.iq** from the release [v$INPUT_VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$INPUT_VERSION)"
             echo "- [ ] Dashboard: **Submit an App** (first version) or open Clean Air and upload a new version"
             echo "- [ ] Type exactly the same version: \`$INPUT_VERSION\`"
             echo "- [ ] Attach \`cover.png\` and the \`screenshot_*\` images from the release"

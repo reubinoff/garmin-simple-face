@@ -40,7 +40,7 @@ export CIQ_AGREEMENT_HASH=<hash printed above, only after you have read and agre
 export GARMIN_USERNAME=... GARMIN_PASSWORD=...
 scripts/install-sdk.sh                         # SDK 9.3.0 + device files of all manifest products; prints the PATH line to add
 scripts/keygen.sh                              # creates ~/.connectiq-keys/developer_key.der (BACK IT UP)
-scripts/build.sh                               # build/NoirTime.prg + build/NoirTime.iq, strict type check
+scripts/build.sh                               # build/CleanAir.prg + build/CleanAir.iq, strict type check
 ```
 
 ### Option B - official SDK Manager (GUI)
@@ -91,12 +91,12 @@ Simulator profiler (D-21, D-26, D-30; measured BEFORE the D-38 font / D-39 field
 date/time texts rebuilt once a minute, no timers or background; memory now: see D-41. The battery % per day on the watch has not been measured.
 How to measure it yourself:
 1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
-2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load
-   `GARMIN/APPS/LOGS/NoirTime.PRF` with the profiler's *Load* button (Profiling guide).
+2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/CleanAir-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load
+   `GARMIN/APPS/LOGS/CleanAir.PRF` with the profiler's *Load* button (Profiling guide).
 3. Real drain: charge to 100 %, wear the watch 24 h with a native face, then 24 h with Clean Air (same always-on setting and activity), compare the battery %.
 
 ## 3. Install on your watch (sideload)
-Per the "Your First App" guide: build the PRG (`build/NoirTime.prg`), connect the watch with USB, and copy it to the watch's `GARMIN/APPS` folder. Eject the watch,
+Per the "Your First App" guide: build the PRG (`build/CleanAir.prg`), connect the watch with USB, and copy it to the watch's `GARMIN/APPS` folder. Eject the watch,
 then select *Clean Air* as the watch face using the watch's normal watch-face picker. The Properties/Settings doc says app settings can be changed in the Connect IQ Store app,
 the Garmin Connect app or Garmin Express; whether a **sideloaded** app shows its settings there is not stated in the docs I read - check this on your watch. Test on the real watch for a day, especially always-on mode
 (the review guidelines say apps must be tested before submission).
@@ -114,7 +114,7 @@ The `build` job runs in the GitHub Environment **`publish`** (`environment: publ
 | Secret | `GARMIN_PASSWORD` | its password (consider a dedicated Garmin account) |
 | Secret | `CIQ_DEVELOPER_KEY_B64` | contents of `~/.connectiq-keys/developer_key.der.b64` (created by `scripts/keygen.sh`) |
 
-The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `NoirTime.prg` (fenix9pro47mm) and `NoirTime.iq` (all products) as the artifact **NoirTime-fenix9pro47mm**.
+The `build` job installs SDK 9.3.0 + device files, builds with `-l 3 -w`, and uploads `CleanAir.prg` (fenix9pro47mm) and `CleanAir.iq` (all products) as the artifact **CleanAir-fenix9pro47mm**.
 The `static-checks` job needs no secrets and also runs the host tests and the **battery check** (`scripts/battery-audit.sh` + `tests/host/test_burnin.py`). The `build` job runs the Connect IQ unit tests under `xvfb`; without the secrets it is skipped with a warning.
 Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and Garmin SSO may require MFA or block CI IPs. If CI login fails, build locally (section 1).
 
@@ -123,7 +123,7 @@ Caveats (DECISIONS.md D-03, D-14, gap G-8): the CLI is a third-party tool, and G
 (error if one is missing), writes `version` (max 20 characters) into the `version` attribute of `<iq:application>` in `manifest.xml`,
 installs the SDK, runs the **battery check** (`scripts/battery-audit.sh` + the AOD burn-in limits test with the device fonts), builds with `scripts/build.sh`, runs the unit tests under `xvfb`, makes store images with `scripts/store-assets.sh`
 (`cover.png` 500 x 500 sRGB without transparency on a solid non-black background with 10 px padding, plus every real `docs/screenshots/active_*` / `aod_*`
-frame under 150 KB) and creates the GitHub Release `v<version>` with `NoirTime.iq`, `NoirTime.prg` and the images. The run summary has the
+frame under 150 KB) and creates the GitHub Release `v<version>` with `CleanAir.iq`, `CleanAir.prg` and the images. The run summary has the
 upload checklist. It does **not** upload to the store - Garmin documents no API or CLI for that (DECISIONS.md D-31).
 
 ### Battery check (required every release)

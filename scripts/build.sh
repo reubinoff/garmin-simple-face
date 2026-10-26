@@ -5,8 +5,8 @@
 #
 # Needs: Connect IQ SDK 9.3.0 `monkeyc` on PATH (see scripts/install-sdk.sh), Java 11+,
 #        the device files for the products in manifest.xml (downloaded by install-sdk.sh), a developer key.
-# Produces: <out>/NoirTime.prg   (release build, for sideloading to GARMIN/APPS)
-#           <out>/NoirTime.iq    (store package, `monkeyc -e`)
+# Produces: <out>/CleanAir.prg   (release build, for sideloading to GARMIN/APPS)
+#           <out>/CleanAir.iq    (store package, `monkeyc -e`)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 KEY="${CIQ_DEVELOPER_KEY_PATH:-$HOME/.connectiq-keys/developer_key.der}"
@@ -25,7 +25,7 @@ mkdir -p "$OUT"
 monkeyc --version
 # -d device, -f jungle, -o output, -y key, -l 3 strict typecheck, -w warnings, -r no debug info
 # (https://developer.garmin.com/connect-iq/monkey-c/compiler-options/)
-monkeyc -d "$DEVICE" -f monkey.jungle -o "$OUT/NoirTime.prg" -y "$KEY" -l 3 -w -r
+monkeyc -d "$DEVICE" -f monkey.jungle -o "$OUT/CleanAir.prg" -y "$KEY" -l 3 -w -r
 # -e = package for the store (IQ file with binaries for every product in manifest.xml)
-monkeyc -e -f monkey.jungle -o "$OUT/NoirTime.iq" -y "$KEY" -l 3 -w
+monkeyc -e -f monkey.jungle -o "$OUT/CleanAir.iq" -y "$KEY" -l 3 -w
 ls -l "$OUT"

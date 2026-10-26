@@ -30,6 +30,8 @@ jobs:
         run: |
           scripts/battery-audit.sh
           (cd tests/host && python3 -m unittest -v test_burnin)
+      - name: Old product name not user-facing (the app is Clean Air; only internal class names keep Noir*)
+        run: scripts/check-names.sh
       - name: No signing keys committed
         run: |
           if git ls-files | grep -Ei '\.(der|pem|b64)$|developer_key'; then
@@ -103,9 +105,9 @@ jobs:
         if: steps.secrets.outputs.ok == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: NoirTime-fenix9pro47mm
+          name: CleanAir-fenix9pro47mm
           path: |
-            build/NoirTime.prg
-            build/NoirTime.iq
+            build/CleanAir.prg
+            build/CleanAir.iq
           if-no-files-found: error
           retention-days: 90
