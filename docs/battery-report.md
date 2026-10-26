@@ -149,5 +149,5 @@ the SDK Manager. Steps (as in [DEVELOPMENT.md](DEVELOPMENT.md#battery)):
 
 * **GUI profiler ms per minute** for the Bebas Neue + fields build (G-31): needs the simulator GUI (CI ubuntu-22.04 runner with a desktop,
   or a developer PC), section 5.
-* **Real drain** (G-15, G-24): charge to 100 %, wear the watch 24 h with a native Garmin face, then 24 h with Noir Time (same always-on
+* **Real drain** (G-15, G-24): charge to 100 %, wear the watch 24 h with a native Garmin face, then 24 h with Clean Air (same always-on
   setting, same activity), compare the battery %. Garmin documents no conversion from profiler time to battery %.

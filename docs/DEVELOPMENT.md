@@ -1,4 +1,4 @@
-# Noir Time - developer guide
+# Clean Air - developer guide
 
 Everything that does not fit on the short [README](../README.md): project layout, building, testing, battery,
 sideloading, CI and publishing. Every technical decision and its official Garmin source: **[DECISIONS.md](../DECISIONS.md)**.
@@ -59,7 +59,7 @@ CIQ_DEVICE=fr255s scripts/run-unit-tests.sh   # unit tests on another product (a
 Check, and take real screenshots into [`screenshots/`](screenshots/):
 1. Time/date/fields centred, nothing cut off by the round edge.
 2. Change `TimeSize`, `HourColor`, `MinuteColor` and `FieldLeft` / `FieldRight` / `FieldBottom` (0 - 12, see `source/NoirFields.mc`) with **File > Edit Persistent Storage > Edit Application.Properties data** (documented in the Properties guide) and confirm the face updates. Check all 5 sizes in high power and always-on: nothing may overlap or touch the round edge.
-   On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Noir Time* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
+   On-watch menu: the docs say watch-face settings are opened from the system Watch Face menu; check that *Clean Air* offers its settings there, that selecting an item cycles its value, and that Back closes the menu.
 3. Always-on: digits must be the same size as in step 2, hollow (outline only); switch to always-on with **Settings > Display Mode > Always-On** (SDK 9.3.0 simulator) and use **File -> View Screen Heat Map** ("Screen Burn-in Simulation", documented in the AMOLED FAQ; enabled only for devices that support burn-in protection).
 4. 12h/24h: change the simulated time format.
 5. Fields: the docs name **Simulation -> Activity Data** for simulated activity data; check steps with 0, 999, 1 000, 12 345 and 100 000+, and every field id in each slot (two rows: the block moves up and stays inside the circle). A field the device lacks must leave its slot empty.
@@ -93,11 +93,11 @@ How to measure it yourself:
 1. Simulator: **File -> View Profiler**, *Start*, let it run through active and always-on minutes, *Stop*; look at `onUpdate` total/average time.
 2. Watch: build with `-k` (`monkeyc -d fenix9pro47mm -f monkey.jungle -o build/NoirTime-prof.prg -y KEY -l 3 -w -k`), sideload, use it, then load
    `GARMIN/APPS/LOGS/NoirTime.PRF` with the profiler's *Load* button (Profiling guide).
-3. Real drain: charge to 100 %, wear the watch 24 h with a native face, then 24 h with Noir Time (same always-on setting and activity), compare the battery %.
+3. Real drain: charge to 100 %, wear the watch 24 h with a native face, then 24 h with Clean Air (same always-on setting and activity), compare the battery %.
 
 ## 3. Install on your watch (sideload)
 Per the "Your First App" guide: build the PRG (`build/NoirTime.prg`), connect the watch with USB, and copy it to the watch's `GARMIN/APPS` folder. Eject the watch,
-then select *Noir Time* as the watch face using the watch's normal watch-face picker. The Properties/Settings doc says app settings can be changed in the Connect IQ Store app,
+then select *Clean Air* as the watch face using the watch's normal watch-face picker. The Properties/Settings doc says app settings can be changed in the Connect IQ Store app,
 the Garmin Connect app or Garmin Express; whether a **sideloaded** app shows its settings there is not stated in the docs I read - check this on your watch. Test on the real watch for a day, especially always-on mode
 (the review guidelines say apps must be tested before submission).
 

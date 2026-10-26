@@ -41,7 +41,7 @@ This is a personal hobby watch face maintained in spare time. There is no formal
 
 ## Scope
 
-* Noir Time is a Garmin Connect IQ **watch face** for the fēnix 9 Pro 47mm.
+* Clean Air is a Garmin Connect IQ **watch face** for the fēnix 9 Pro 47mm.
 * It requests one permission, `SensorHistory` (to read the Body Battery history). It has no network, positioning or
   communication permissions.
 * It stores only its own display settings (Application.Properties) on the watch. It sends and stores no personal data off the device.

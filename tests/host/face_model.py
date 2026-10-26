@@ -1,4 +1,4 @@
-"""Host-side model of the Noir Time watch face (no Connect IQ SDK / device files needed).
+"""Host-side model of the Clean Air watch face (no Connect IQ SDK / device files needed).
 
 * A line-by-line Python port of the pure functions in source/NoirLayout.mc and the field helpers in
   source/NoirFields.mc (constants are read from those files, so the port cannot silently drift).

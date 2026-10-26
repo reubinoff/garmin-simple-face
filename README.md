@@ -1,13 +1,13 @@
-# Noir Time
+# Clean Air
 
 **A clean, black, AMOLED-friendly watch face for the Garmin fēnix® 8 and fēnix® 9 series and Forerunner® watches.**
 
-Noir Time puts the time front and centre in big, tall **Bebas Neue** digits on a pure black background, with the date
+Clean Air puts the time front and centre in big, tall **Bebas Neue** digits on a pure black background, with the date
 above and up to three data fields below. Pick the size, the colours and the fields right on the watch or in the Garmin
 Connect app.
 
 <p align="center">
-  <img src="docs/screenshots/active_xlarge_white-cyan.png" alt="Noir Time on a fēnix 9 Pro 47mm (real simulator screenshot)" width="360">
+  <img src="docs/screenshots/active_xlarge_white-cyan.png" alt="Clean Air on a fēnix 9 Pro 47mm (real simulator screenshot)" width="360">
 </p>
 
 ## Features
@@ -34,7 +34,7 @@ scripts/build.sh      # -> build/NoirTime.prg (fenix9pro47mm; CIQ_DEVICE=<id> fo
 ## Install
 
 Connect the watch over USB, copy `build/NoirTime.prg` to the watch's `GARMIN/APPS` folder, eject, then pick
-**Noir Time** from the watch faces list.
+**Clean Air** from the watch faces list.
 
 
 ## More
@@ -49,7 +49,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-Noir Time © 2026 reubinoff is licensed under the
+Clean Air © 2026 reubinoff is licensed under the
 [GNU General Public License v3.0 (GPL-3.0)](https://www.gnu.org/licenses/gpl-3.0.html).
 Any copy or modified version you distribute must also be released under GPL-3.0, with its source code.
 See [LICENSE](LICENSE) for the full text.

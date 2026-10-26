@@ -118,24 +118,24 @@ jobs:
         run: |
           notes="$RUNNER_TEMP/notes.md"
           if [ -n "$INPUT_WHATS_NEW" ]; then printf '%s\n' "$INPUT_WHATS_NEW" > "$notes"
-          else printf 'Noir Time %s for the fenix 9 Pro 47mm. Store package (NoirTime.iq), sideload build (NoirTime.prg) and store images.\n' "$INPUT_VERSION" > "$notes"; fi
+          else printf 'Clean Air %s for the fenix 9 Pro 47mm. Store package (NoirTime.iq), sideload build (NoirTime.prg) and store images.\n' "$INPUT_VERSION" > "$notes"; fi
           files=(build/NoirTime.iq build/NoirTime.prg)
           if compgen -G "store-assets/*" > /dev/null; then files+=(store-assets/*); fi
           # Re-running the same version refreshes the release instead of failing on an existing tag.
           gh release delete "v$INPUT_VERSION" --yes --cleanup-tag || true
-          gh release create "v$INPUT_VERSION" "${files[@]}" --title "Noir Time $INPUT_VERSION" --notes-file "$notes" --target "$GITHUB_SHA"
+          gh release create "v$INPUT_VERSION" "${files[@]}" --title "Clean Air $INPUT_VERSION" --notes-file "$notes" --target "$GITHUB_SHA"
 
       - name: Summary - upload to the store by hand
         if: always()
         run: |
           {
-            echo "## Noir Time $INPUT_VERSION - store package"
+            echo "## Clean Air $INPUT_VERSION - store package"
             echo
             echo "Upload to the Connect IQ Store is **manual** (Garmin has no publish API or CLI)."
             echo "Garmin Developer Dashboard: https://apps.garmin.com/developer/dashboard"
             echo
             echo "- [ ] Download **NoirTime.iq** from the release [v$INPUT_VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$INPUT_VERSION)"
-            echo "- [ ] Dashboard: **Submit an App** (first version) or open Noir Time and upload a new version"
+            echo "- [ ] Dashboard: **Submit an App** (first version) or open Clean Air and upload a new version"
             echo "- [ ] Type exactly the same version: \`$INPUT_VERSION\`"
             echo "- [ ] Attach \`cover.png\` and the \`screenshot_*\` images from the release"
             echo "- [ ] Hero image (\`hero_1440x720.png\`) and the two device icons (\`icon_64color_128.png\`, \`icon_24bit_128.png\`) are attached to the release too"
