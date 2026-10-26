@@ -17,10 +17,11 @@ def load(name):
     return a
 
 
-def time_block_height(img):
+def time_block_height(img, threshold=150):
     """Longest run of consecutive rows containing bright (time digit) pixels; the AOD row mask blanks every 3rd
-    row, so gaps of up to 2 rows are bridged."""
-    bright = (img.max(axis=2) > 150).any(axis=1)
+    row, so gaps of up to 2 rows are bridged. Always-on draws the digits at 70 % (D-43), so AOD frames use a lower
+    threshold (120: above the AOD text grey 0x6E, below 70 % of the dimmest shipped time colour 0xC8)."""
+    bright = (img.max(axis=2) > threshold).any(axis=1)
     best = run = gap = 0
     for b in bright:
         if b:
@@ -58,8 +59,8 @@ class RealScreenshotTests(unittest.TestCase):
         for path in glob.glob(os.path.join(SHOTS, "aod_*.png")):
             name = os.path.basename(path)
             heights = []
-            for img in (load(name.replace("aod_", "active_", 1)), load(name)):
-                heights.append(time_block_height(img))
+            heights.append(time_block_height(load(name.replace("aod_", "active_", 1))))
+            heights.append(time_block_height(load(name), threshold=120))
             self.assertLessEqual(abs(heights[0] - heights[1]), 2 * 4 + 2, (name, heights))  # outline pad + shift
 
     def test_hidden_fields(self):

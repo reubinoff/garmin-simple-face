@@ -6,35 +6,35 @@ Every percentage is a share of the ROUND screen (pixels inside the circle), the 
 
 ## Real simulator frames (SDK 9.3.0)
 
-Every `docs/screenshots/aod_*.png` (fenix9pro47mm) and `docs/screenshots/devices/*_aod.png`, measured by `tests/host/burnin_report.py`. These frames were captured before D-43 (8 px shift, undimmed digits): the pixel count is unchanged by D-43, the luminance shown is higher than the current code produces.
+Every `docs/screenshots/aod_*.png` (fenix9pro47mm) and `docs/screenshots/devices/*_aod.png`, measured by `tests/host/burnin_report.py`. The frames show the current always-on look (D-43: 4 px minute-of-day shift, digits at 70 %) with simulated activity data (7,432 steps, 3 notifications).
 
 | frame | screen | pixels on | mean luminance |
 |---|---|---|---|
-| fenix9pro47mm large_white-white | 454 px | 3.84 % | 2.40 % |
-| fenix9pro47mm large_white-white_calories-floors-temperature | 454 px | 4.01 % | 2.43 % |
-| fenix9pro47mm large_white-white_no-fields | 454 px | 3.29 % | 2.19 % |
-| fenix9pro47mm large_yellow-white | 454 px | 3.84 % | 2.23 % |
-| fenix9pro47mm medium_silver-teal_intensity-notifications-distance | 454 px | 3.74 % | 1.70 % |
-| fenix9pro47mm medium_white-orange | 454 px | 3.61 % | 1.82 % |
-| fenix9pro47mm medium_white-orange_steps-only | 454 px | 3.28 % | 1.69 % |
-| fenix9pro47mm medium_white-white | 454 px | 3.53 % | 2.10 % |
-| fenix9pro47mm medium_white-white_batterydays-stress | 454 px | 3.45 % | 2.00 % |
-| fenix9pro47mm medium_white-white_steps-bb-hr | 454 px | 3.86 % | 2.18 % |
-| fenix9pro47mm small_white-cyan | 454 px | 3.21 % | 1.59 % |
-| fenix9pro47mm xlarge_lime-magenta | 454 px | 4.13 % | 1.79 % |
-| fenix9pro47mm xlarge_white-cyan | 454 px | 3.87 % | 2.10 % |
-| fenix9pro47mm xlarge_white-cyan_hr-battery | 454 px | 4.52 % | 2.41 % |
-| fenix9pro47mm xxlarge_gold-blue | 454 px | 4.39 % | 1.82 % |
-| fenix9pro47mm xxlarge_white-cyan | 454 px | 4.30 % | 2.36 % |
-| fenix9pro47mm xxlarge_white-white | 454 px | 4.39 % | 2.82 % |
-| fenix843mm medium_white-white | 416 px | 3.62 % | 2.18 % |
-| fenix843mm xxlarge_gold-blue | 416 px | 4.67 % | 2.00 % |
-| fenix9pro51mm xxlarge_white-cyan | 466 px | 4.00 % | 2.20 % |
-| fr165 medium_white-orange | 390 px | 4.37 % | 1.91 % |
-| fr265s xlarge_white-white | 360 px | 5.28 % | 3.20 % |
-| fr970 large_white-blue | 454 px | 4.47 % | 1.98 % |
+| fenix9pro47mm large_white-white | 454 px | 3.86 % | 1.81 % |
+| fenix9pro47mm large_white-white_calories-floors-temperature | 454 px | 4.12 % | 1.92 % |
+| fenix9pro47mm large_white-white_no-fields | 454 px | 2.99 % | 1.48 % |
+| fenix9pro47mm large_yellow-white | 454 px | 3.79 % | 1.68 % |
+| fenix9pro47mm medium_silver-teal_intensity-notifications-distance | 454 px | 3.99 % | 1.46 % |
+| fenix9pro47mm medium_white-orange | 454 px | 3.67 % | 1.39 % |
+| fenix9pro47mm medium_white-orange_steps-only | 454 px | 3.33 % | 1.27 % |
+| fenix9pro47mm medium_white-white | 454 px | 3.57 % | 1.59 % |
+| fenix9pro47mm medium_white-white_batterydays-stress | 454 px | 3.59 % | 1.61 % |
+| fenix9pro47mm medium_white-white_steps-bb-hr | 454 px | 4.00 % | 1.75 % |
+| fenix9pro47mm small_white-cyan | 454 px | 3.35 % | 1.28 % |
+| fenix9pro47mm xlarge_lime-magenta | 454 px | 4.14 % | 1.36 % |
+| fenix9pro47mm xlarge_white-cyan | 454 px | 4.14 % | 1.65 % |
+| fenix9pro47mm xlarge_white-cyan_hr-battery | 454 px | 4.12 % | 1.66 % |
+| fenix9pro47mm xxlarge_gold-blue | 454 px | 4.05 % | 1.33 % |
+| fenix9pro47mm xxlarge_white-cyan | 454 px | 4.34 % | 1.75 % |
+| fenix9pro47mm xxlarge_white-white | 454 px | 4.05 % | 1.92 % |
+| fenix843mm medium_white-white | 416 px | 3.56 % | 1.61 % |
+| fenix843mm xxlarge_gold-blue | 416 px | 4.63 % | 1.51 % |
+| fenix9pro51mm xxlarge_white-cyan | 466 px | 4.34 % | 1.77 % |
+| fr165 medium_white-orange | 390 px | 4.50 % | 1.54 % |
+| fr265s xlarge_white-white | 360 px | 5.13 % | 2.28 % |
+| fr970 large_white-blue | 454 px | 4.10 % | 1.41 % |
 
-Worst pixels on per screen size: 360 px 5.28 %, 390 px 4.37 %, 416 px 4.67 %, 454 px 4.52 %, 466 px 4.00 % (limit 10 %).
+Worst pixels on per screen size: 360 px 5.13 %, 390 px 4.50 %, 416 px 4.63 %, 454 px 4.34 %, 466 px 4.34 % (limit 10 %).
 
 ## Full day, host model (font-accurate)
 

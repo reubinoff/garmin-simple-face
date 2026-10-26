@@ -81,8 +81,8 @@ with open(out, "w", encoding="utf-8") as fh:
              "(\"ten-percent of the total available screen pixels\") defines it for round screens (DECISIONS.md D-43).\n\n")
     fh.write("## Real simulator frames (SDK 9.3.0)\n\n")
     fh.write("Every `docs/screenshots/aod_*.png` (fenix9pro47mm) and `docs/screenshots/devices/*_aod.png`, measured by "
-             "`tests/host/burnin_report.py`. These frames were captured before D-43 (8 px shift, undimmed digits): the "
-             "pixel count is unchanged by D-43, the luminance shown is higher than the current code produces.\n\n")
+             "`tests/host/burnin_report.py`. The frames show the current always-on look (D-43: 4 px minute-of-day shift, "
+             "digits at 70 %) with simulated activity data (7,432 steps, 3 notifications).\n\n")
     fh.write("| frame | screen | pixels on | mean luminance |\n|---|---|---|---|\n")
     for name, size, lit, lum in real:
         fh.write(f"| {name} | {size} px | {100 * lit:.2f} % | {100 * lum:.2f} % |\n")
