@@ -12,7 +12,7 @@ Clean Air keeps it minimal and striking: a deep black background with bold, easy
 - Date at a glance
 - Steps and Body Battery with clear icons
 - Three configurable data slots (left, right, bottom) — choose from steps, Body Battery, heart rate, battery %, battery days, calories, floors, intensity minutes, notifications, stress, temperature, distance, or leave empty
-- Designed for AMOLED always-on: under 5% of pixels lit, verified in the Connect IQ simulator
+- Designed for AMOLED always-on: under 6% of the round screen lit, measured on Connect IQ simulator frames
 - Battery-conscious by design — no background work, timers, or network calls
 
 Works across fēnix 8 and fēnix 9 variants plus a wide range of round Forerunner models.

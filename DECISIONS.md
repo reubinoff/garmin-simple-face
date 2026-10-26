@@ -17,6 +17,8 @@ which is what was actually read when the page itself is JavaScript-rendered.
 ## D-01 Target device: `fenix9pro47mm` (fēnix® 9 Pro 47mm)
 
 *Extended by D-36: the manifest now lists 38 products; fenix9pro47mm stays the reference device (layout constants, default PRG and tests).*
+*Superseded in part by D-36 (marked 2026-10-26, D-44): the "43 mm and 51 mm ... not targeted" paragraph below is history - `fenix9pro43mm`,
+`fenix9pro51mm` and every other fēnix 8 / 9 size are now targeted (38 products in `manifest.xml`).*
 
 | Fact | Value | Source |
 |---|---|---|
@@ -51,6 +53,10 @@ Status: VERIFIED-SDK. `scripts/install-sdk.sh` pins `9.3.0` (override with `CIQ_
 Status: VERIFIED-ON-BOX end to end (2026-10-24): agreement accepted by hash, login, SDK 9.3.0, `device download -d fenix9pro47mm --include-fonts` (D-23).
 
 ## D-04 `minApiLevel="5.0.0"`
+
+*Superseded by D-36 (marked 2026-10-26, D-44): `manifest.xml` now has `minApiLevel="3.1.0"` (lowest `connectIQVersion` of the 38 products:
+fr645 / fr935 3.1.6). The API 5.0.0 `getDisplayMode` / `DISPLAY_MODE_*` symbols sit in `(:ciq4)` code behind `has` (D-36, D-43).
+The table below is the original fēnix 9 Pro-only reasoning.*
 
 Manifest: `core-topics/manifest-and-permissions/` ("minApiLevel ... only the major and minor versions are considered").
 Highest API level among the APIs used (from the API docs, "Since: API Level"):
@@ -87,7 +93,22 @@ ComplicationProvider/Subscriber, DataFieldAlert, Fit, PersistedContent, Position
 exactly one permission, `<iq:uses-permission id="SensorHistory"/>` (SDK `bin/projectInfo.xml`: id `SensorHistory`, "Permission to access historical
 sensor data", module `SensorHistory`, listed for the `watchface` app type). No other permission is used. Status: VERIFIED-DOC + VERIFIED-SDK.
 
+**Do not remove `SensorHistory` (added 2026-10-26, D-44).** The official sources disagree, and the stricter one wins:
+* The permission table in Core Topics > Manifest and Permissions (<https://developer.garmin.com/connect-iq/core-topics/manifest-and-permissions/>,
+  local `sdk/doc/docs/Core_Topics/Manifest_and_Permissions.html`) leaves the **Watch Face** column of the `SensorHistory` row **blank**
+  (`x` only for Widget, App and Audio Content Provider; checked in the HTML: the `permissions__entry__4` cell is empty).
+* The API page <https://developer.garmin.com/connect-iq/api-docs/Toybox/SensorHistory.html> says **"Requires Permission: SensorHistory"**
+  for the whole module (`getBodyBatteryHistory`, `getStressHistory` are used, `source/NoirSensors.mc:38`, `:53`).
+* The SDK's `bin/projectInfo.xml` `<permissionMap appType="watchface">` lists `<permission id="SensorHistory" />` (no `dependsOn`),
+  so the compiler and the manifest editor allow it for a watch face; the simulator returns Body Battery and stress with it.
+So the permission stays declared. A reviewer who reads only the table must not strip it - without it the module's documented requirement
+is not met. Store-side acceptance is still unverified (no submission with it yet).
+
 ## D-07 Data sources (all permission-free, all API 1.0.0)
+
+*Superseded in part (marked 2026-10-26, D-44): true for the four sources below, but no longer for the face as a whole. Body Battery and
+stress use `SensorHistory` (API 3.3.0, permission `SensorHistory`, D-27, D-39), temperature uses `Weather` (API 3.2.0), floors /
+intensity 2.1.0, battery days 3.3.0 - full table in D-39.*
 
 | Need | API | Notes (from the API docs) |
 |---|---|---|
@@ -143,7 +164,10 @@ Status: rules VERIFIED-DOC; compliance VERIFIED-ON-BOX in the real simulator (24
 * Time font: chosen from the size setting with a fit check against the round screen (D-17, D-20); cached and recomputed only when the size setting
   changes, and **identical in active and always-on mode** (D-19).
 * The colon is drawn with two `fillCircle` calls: the docs do not state that the number-only fonts contain ":" (gap G-4), so it is not relied on.
+  *Superseded by D-38 (marked 2026-10-26): the colon is two squares, `fillRectangle` (`NoirTimeView.mc`, active) / outlined squares
+  (`drawOutlinedSquare`, always-on); the time font is the embedded Bebas Neue, which has no colon glyph in use either.*
 * `dc.setAntiAlias(true)` for the circles (guarded with `has`, per the Dc doc); switched off for the AOD row mask (D-19).
+  *Now: anti-aliasing is on for the text and the icon primitives; the colon squares are axis-aligned.*
 * Colon is fixed at the screen centre; hours are right-aligned to it, minutes left-aligned, so the colon never jumps.
 * Steps are shown as a number only (thousands separator) - design choice, in `NoirLayout.formatSteps()` (`--` when `steps` is null).
 * The vertical position of the colon dots (`fontHeight * 14 %`) assumes the digits are vertically centred in the font box. This is **UNVERIFIED** (gap G-3); check in the simulator.
@@ -259,6 +283,14 @@ Status: design decision; based on the project state, not on runtime behaviour.
 
 Owner request: "in always-on everything stays the same size, only the digits are not filled but outlines only".
 
+*Corrected 2026-10-26 (D-43, D-44), history kept below:* the colon is **outlined squares** (`drawOutlinedSquare`), not `drawCircle`
+(D-38); date and fields use **RobotoCondensed** (`getVectorFont`) where the device has it, else `FONT_SMALL` (D-40); the shift is
+now **4 px** on an 8-step path (`NoirLayout.aodShiftX/Y`), and the digit colour is dimmed to 70 % (`NoirLayout.dimColor`). The old
+"+/-8 px, FAQ recommendation" attribution was wrong: the AMOLED FAQ gives no pixel amount ("shifting the time every minute"); the number
+comes from the UX guidelines, Watch Faces, Best Practices: "consider moving elements up to four pixels in any direction every minute
+while in always-on mode" (<https://developer.garmin.com/connect-iq/user-experience-guidelines/watch-faces/>, local
+`sdk/doc/docs/User_Experience_Guidelines/Watch_Faces.html`).
+
 Limits that apply (primary sources):
 * AMOLED FAQ <https://developer.garmin.com/connect-iq/connect-iq-faq/how-do-i-make-a-watch-face-for-amoled-products/>: "a pixel is considered on when rendering any color other than black"; "if more than 10% of the screen pixels are on or any pixel is on for
   longer than 3 minutes, the system will shut off the screen"; "Since the Venu 2, the rule for always-on is to use less than 10% of the screen's luminance";
@@ -276,7 +308,8 @@ How the outline is drawn (only documented API 1.0.0 calls, <https://developer.ga
 * Layout and font are **identical** to active mode (same `updateLayout()` result); the fit check includes the outline width (D-20).
 
 Burn-in protection:
-* Whole block shifted +/-8 px each minute on a 4-phase cycle (`NoirLayout.aodShift`, FAQ recommendation).
+* ~~Whole block shifted +/-8 px each minute on a 4-phase cycle (`NoirLayout.aodShift`, FAQ recommendation).~~ Now 4 px per minute
+  (UX guidelines, see the correction above; D-43).
 * **Row mask:** after drawing, every 3rd screen row (`y % 3 == minute % 3`, `NoirLayout.maskFirstRow`) is set black with 1 px `fillRectangle` over the whole width,
   anti-aliasing off. Every pixel is therefore black at least once in any 3 consecutive minutes **whatever the real glyph shapes are**. Reason: with the shift alone
   the host model found pixels on for 10 consecutive minutes (overlapping strokes of different digits / the date row). Cost: about 152 `fillRectangle` per minute.
@@ -715,6 +748,8 @@ Older fēnix models (fēnix 5/6/7) were not asked for and are not added.
   * `(:ciq4)` / `(:ciq3)` variants of `chooseVectorFont` and `isLowPower`. API 3.x devices get `chooseVectorFont() = false` (XX-Large
     falls back to the X-Large system font) and `isLowPower()` from `onEnterSleep`/`onExitSleep` (`_inLowPower`) instead of `getDisplayMode`.
   * `(:bodybattery)` / `(:nobodybattery)` variants in `NoirBodyBattery` (645 / 645 Music / 935 are below 3.3.0: Body Battery hidden).
+    *Superseded by D-39 (marked 2026-10-26): the tags are now `(:hist33)` / `(:nohist33)` in `source/NoirSensors.mc` (Body Battery,
+    stress, weather); `NoirBodyBattery.mc` no longer exists. `isLowPower` became `powerState` (D-43). Current jungle lines: D-39.*
   * `monkey.jungle`: `base.excludeAnnotations = ciq3;nobodybattery`; `ciq4;nobodybattery` for fr245/fr245m/fr745/fr945/fr945lte/fr55;
     `ciq4;bodybattery` for fr645/fr645m/fr935.
 * Resolution independence: the layout was already proportional (percent of the screen). The one absolute value, the XX-Large vector
@@ -749,6 +784,9 @@ Older fēnix models (fēnix 5/6/7) were not asked for and are not added.
 
 * `store/description.md` has a **Permissions** note: "The Sensor History permission is used only to display Body Battery. No other
   sensor data is read, and nothing ever leaves the watch." README has the same reassurance on the Body Battery feature line.
+* *Corrected 2026-10-26 (D-44): `source/NoirBodyBattery.mc` no longer exists. The SensorHistory calls are
+  `SensorHistory.getBodyBatteryHistory` (`source/NoirSensors.mc:38`) and `SensorHistory.getStressHistory` (`:53`), both `period: 1`;
+  the store text already says "Body Battery and stress" (D-39). The original wording follows.*
 * Basis: the code. The only `SensorHistory` call is `getBodyBatteryHistory` in `source/NoirBodyBattery.mc` (`period: 1`); the manifest
   asks only for `SensorHistory` (<https://developer.garmin.com/connect-iq/core-topics/manifest-and-permissions/>), with no
   `Communications`/`Background`/`Positioning` permission, so the app cannot send data off the watch. `VERIFIED-SDK` (manifest + source
@@ -935,6 +973,51 @@ Full write-up: **[docs/battery-report.md](docs/battery-report.md)**. Rules as in
   "Battery check (required every release)" checklist in docs/DEVELOPMENT.md section 5.
 
 Status: rules VERIFIED-DOC; lit pixels and code audit VERIFIED-ON-BOX; profiler and watch battery % UNVERIFIED (G-31, G-15).
+*Note 2026-10-26: the percentages above are shares of the 454 x 454 square and the "no allocation" remark of the battery report was
+too strong; both are corrected in D-43 (per-circle figures, honest allocation list).*
+
+## D-43 Always-on refinements, display-off, live heart rate, per-circle burn-in metric (2026-10-26)
+
+Source: senior review of the Clean Air build (all items re-checked against the Garmin docs before changing anything). Local copies are
+the SDK 9.3.0 `doc/` pages; URLs are the public ones.
+
+| Change | Code | Garmin source (verbatim) |
+|---|---|---|
+| **AOD shift 8 -> 4 px**, on an 8-step path: each minute moves exactly 4 px on one axis, offsets stay within +-4 px per axis. Indexed by the **minute of the day** (1440 % 8 == 0; `clock.min` would jump 8 px at every full hour - caught while implementing, regression test added). | `NoirLayout.AOD_SHIFT_PIXELS`, `AOD_PATH_X/Y`, `aodShiftX/Y(minuteOfDay)`; `NoirTimeView.updateTexts` | UX guidelines, Watch Faces, Best Practices: "consider moving elements up to four pixels in any direction every minute while in always-on mode" (<https://developer.garmin.com/connect-iq/user-experience-guidelines/watch-faces/>, `sdk/doc/docs/User_Experience_Guidelines/Watch_Faces.html`). The AMOLED FAQ only says "shifting the time every minute" (no number) - the D-19 "+/-8 px, FAQ" citation was wrong and is corrected there. |
+| **Always-on digits and colon at 70 %** of the chosen colour (white -> `0xB2B2B2`, cyan `0x00D4FF` -> `0x0094B2`); computed once per settings change, not per frame. Active mode unchanged. | `NoirLayout.AOD_DIGIT_PERCENT`, `dimColor`; `NoirTimeView.updateSettings` | Same page: "Avoid using much white or blue. Consider using light gray instead." AMOLED FAQ: "Since the Venu 2, the rule for always-on is to use less than 10% of the screen's luminance". |
+| **`DISPLAY_MODE_OFF`**: `onUpdate` clears and returns without any other work (API 5.0.0 devices, `(:ciq4)` `powerState`). | `NoirTimeView.onUpdate`, `powerState` | `api-docs/Toybox/System.html`: `DISPLAY_MODE_OFF = 2`, "Display is off.", API Level 5.0.0. AMOLED FAQ example: `case System.DISPLAY_MODE_OFF: break;` (draws nothing). Whether `onUpdate` is called while off is not documented (G-33). |
+| **Heart rate live in high power**: if heart rate is shown, it is re-read on every high-power frame and only that field is re-measured, only when its text changed. Other fields stay once per minute; low power unchanged. | `NoirTimeView.updateTexts` (`highPower && _hrShown`), `_hrDirty`, `measureField` | `api-docs/Toybox/WatchUi/WatchFace.html`: high power gives "full screen updates every second via calls to onUpdate()" for a short period after a gesture; low power calls `onUpdate` "at the top of every minute". `Activity.Info.currentHeartRate` (`api-docs/Toybox/Activity/Info.html`) is a passive read - no sensor is switched on. Cost in docs/battery-report.md section 3. |
+| **Resolved settings cached in the view**: `NoirSettings.reload()` bumps a generation; the view copies size, the three field ids (unsupported -> None), colours, colon colour and the dimmed colours only when the generation changed. | `NoirSettings.generation`, `NoirTimeView.updateSettings` | Design (review nice-to-have #8); settings source as D-08 (`Application.Properties`, <https://developer.garmin.com/connect-iq/api-docs/Toybox/Application/Properties.html>). |
+| **`onShow` resets the layout key**, so a system-language change (date font, D-40) is picked up. | `NoirTimeView.onShow` | `api-docs/Toybox/WatchUi/View.html` (example code): "onShow() is called when this View is brought to the foreground". |
+| **Always-on shift without allocation**: `aodShift()` returned a new 2-element array per frame; now two `Number` functions stored in fields once per minute. | `NoirLayout.aodShiftX/Y` | Design. The icon `fillPolygon` point arrays and the stress icon's `xs` / `ys` still allocate per frame (stated in docs/battery-report.md section 3, which no longer claims "no allocation"). |
+| **Burn-in metric per circle**: lit pixels are divided by the pixels inside the round screen (of each frame's own size for real screenshots), not by W x H. The 6 per-device always-on frames are now in the report. | `tests/host/face_model.lit_fraction`, `burn_in_run`, `tests/host/burnin_report.py` | AMOLED FAQ: "more than 10% of the screen pixels"; `api-docs/Toybox/System/DeviceSettings.html` `requiresBurnInProtection`: "ten-percent of the total available screen pixels". Neither defines the denominator for a round screen, so the smaller (circle) one is used - conservative. |
+
+Results (2026-10-26, box): host model, full day, white / white, per circle: always-on worst case see docs/battery-report.md section 2
+(about 5.5 % pixels on at XX-Large / X-Large + heart rate on 454 px, about 2.5 % luminance, longest on-run 2 min; limits 10 % / 10 % /
+3 min). Real simulator frames (taken before this change, so 8 px shift and undimmed digits; pixel count representative): worst per screen
+360 px 5.28 %, 390 px 4.37 %, 416 px 4.67 %, 454 px 4.52 %, 466 px 4.00 %.
+Status: rules VERIFIED-DOC; code VERIFIED-ON-BOX (strict builds, .iq, host tests incl. a Monkey C <-> host parity test of the new
+`testAodShift` / `testDimColor`); simulator unit tests and on-watch look UNVERIFIED on this box (G-31, G-33).
+
+## D-44 Name "Clean Air" in every artifact; store text accuracy; manifest 1.0.2; drifted entries marked (2026-10-26)
+
+* **Artifacts renamed** (old product-name prefix) -> `CleanAir.prg` / `CleanAir.iq` / `CleanAir-test.prg` / `-debug` / `-prof`, CI artifact
+  `CleanAir-fenix9pro47mm`, release notes default text (`scripts/build.sh`, `run-*.sh`, `build.yml`, `release.yml`, README, docs).
+  The Monkey C class names (`NoirTimeApp` = manifest `entry`, `NoirTimeView`, `NoirTimeSettingsMenu/Delegate`) stay: they are never
+  shown to the user, and the manifest `id` / `entry` must not change between store versions (D-05).
+  **CI guard:** `scripts/check-names.sh` (`git grep -P` for the old name except those class names) runs in `build.yml` static-checks
+  and in `release.yml` before the battery check.
+* **Store text** (`store/description.md`) checked against App Review Guidelines 4a "Describe Your App Accurately and Completely" ("You must not make any
+  inaccurate or misleading statements", <https://developer.garmin.com/connect-iq/app-review-guidelines/>): 16 colours, five sizes, separate hour / minute colours, Distance in
+  the field list, always-on "under 6% of the round screen lit, measured on Connect IQ simulator frames" (worst real frame 5.28 % per circle,
+  fr265s 360 px; D-43 - first written as "under 5 %", which held only per square), Forerunner
+  645 / 645 Music / 935 settings in Garmin Connect only (no `getSettingsView`, D-36), release notes for 1.0.2.
+* **`manifest.xml` version 1.0.1 -> 1.0.2**, matching the latest published package named in the store text. Nothing was uploaded or
+  released (owner: "do not release a version now"); the next upload needs a new number (D-15 / G-20).
+* **Drifted entries marked** in place (history kept, nothing deleted): D-01 (43 / 51 mm now targeted), D-04 (minApiLevel 3.1.0), D-07
+  (not all permission-free), D-10 (colon squares), D-19 (colon, fonts, 4 px shift and the corrected citation), D-36
+  (`(:hist33)` tags, `powerState`), D-37 (`NoirSensors.mc`), G-4 closed, G-28 closed with D-06's SensorHistory note.
+Status: VERIFIED-ON-BOX (`check-names.sh` passes, negative test fails as intended; both workflow YAML files parse).
 
 ## Open gaps
 
@@ -943,7 +1026,7 @@ Status: rules VERIFIED-DOC; lit pixels and code audit VERIFIED-ON-BOX; profiler 
 | G-1 | ~~No device build / simulator / unit tests / screenshots~~ **RESOLVED 2026-10-24** (D-23). | | |
 | G-2 | ~~Burn-in only estimated~~ **RESOLVED** (D-23): real simulator 24-hour simulation, no burn-in; font-accurate model max 3.47 % | | a check on the watch is still advisable |
 | G-3 | ~~Colon centring / font choice / spacing~~ **RESOLVED** (D-23, screenshots) | | |
-| G-4 | Colon glyph in number fonts undocumented | docs silent | circles are used, no dependency |
+| G-4 | ~~Colon glyph in number fonts undocumented~~ **CLOSED 2026-10-26**: no font colon is used; the colon is two squares (`fillRectangle`, D-38) | docs silent | no dependency |
 | G-5 | Hebrew date rendering / RTL order unverified | not run in Hebrew yet | simulator *Settings > Language* Hebrew |
 | G-6 | `-r` for the `.iq` export undocumented | VS Code extension behaviour not documented | omitted (documented form); the `.iq` builds; store acceptance not tried |
 | G-7 | Store screenshot specs not documented in the sources read | listing form is behind the Garmin login | see the form when you submit; use `docs/screenshots/` (real), not `docs/mockups` |
@@ -966,14 +1049,20 @@ Status: rules VERIFIED-DOC; lit pixels and code audit VERIFIED-ON-BOX; profiler 
 | G-25 | Coverage of the device's RobotoCondensed for every glyph of the 11 upper-case languages | simulator (English) only | look at the date in each language on a watch (D-40) |
 | G-26 | Freshness of stress / temperature (newest history sample, Weather update rate) | API docs give no update interval | compare with the native widgets on a watch |
 | G-27 | Heap cost of the bitmap time font on a real API 3.x watch (fr245 / fr645 / fr55) | simulator: +0.4 - 1.8 kB, 29.3 / 91.8 kB used | check with the profiler on a watch |
-| G-28 | Whether a watch face needs the SensorHistory permission for Body Battery / stress at all | kept as in D-27 | none needed unless Garmin says otherwise |
+| G-28 | ~~Whether a watch face needs the SensorHistory permission for Body Battery / stress at all~~ **CLOSED 2026-10-26: yes, required** - the SensorHistory API page says "Requires Permission: SensorHistory"; the permission table's blank Watch Face cell is a doc inconsistency (D-06) | | keep it declared; store acceptance still to be seen on submission |
 | G-29 | Steps (and calories, distance) show 0 in the simulator frames | simulator activity data not set (as G-19) | set *Simulation -> Activity Data* or check on the watch |
 | G-30 | No side-by-side comparison with *Pretty Simple* on the same watch | only its store pictures were seen | install both on the watch and compare |
 | G-31 | **Narrowed 2026-10-25 (D-42):** lit-pixel / burn-in model and code audit RE-DONE for the Bebas Neue + fields build (always-on max 4.33 %, docs/battery-report.md). Still open: simulator GUI profiler ms per minute and the 24 h burn-in heat-map frames with the new font, and the real 24 h drain on the watch | the SDK 9.3.0 simulator GUI does not run on the Debian 13 build box; Garmin documents no headless profiler | profiler run on Ubuntu 22.04 / SDK Manager PC or a `-k` build on the watch (docs/battery-report.md section 5); 24 h comparison on the watch |
 | G-32 | D-29's two show/hide toggles are superseded by D-39 | old `ShowSteps` / `ShowBodyBattery` values are ignored after the upgrade | none |
+| G-33 | Whether the system calls `onUpdate` while `System.getDisplayMode()` is `DISPLAY_MODE_OFF`, and the look of the 4 px / 70 % always-on on a real AMOLED | not documented; the simulator does not run on the box | watch, or simulator *Settings > Display Mode* on the CI / developer PC; then retake `docs/screenshots/aod_*` (D-43) |
+| G-34 | "up to four pixels in any direction" - per-minute step or distance from the base position? | wording allows both | both are met per axis (each minute moves 4 px on one axis, offsets within +-4 px); a diagonal corner is 5.7 px from the base |
 | G-17 | CI `build` job / `release.yml` (ubuntu-22.04 + apt packages for the simulator) not run | no secrets / no push from here | first run in GitHub Actions |
 
 ## What WAS verified in this session
+
+* After D-43 / D-44 (2026-10-26): `scripts/build.sh` (strict `-l 3 -w`): PRG and `.iq` (52 part numbers) `BUILD SUCCESSFUL`, 0 warnings;
+  strict `-t` (unit-test) build and `fr645` (`(:ciq3)`) build successful; 37 host tests OK (1 skipped without the SDK XSD) with device
+  fonts and without; `mypy` clean; `battery-audit.sh` and `check-names.sh` OK. Simulator unit tests not runnable on this box (G-31).
 
 * SDK 9.3.0 downloaded from Garmin's official link, `monkeyc` runs (version printed).
 * All resource XML files validate against the SDK's `resources.xsd`; `manifest.xml` and workflow YAML are well-formed.
