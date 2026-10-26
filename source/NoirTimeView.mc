@@ -12,12 +12,14 @@ import Toybox.WatchUi;
 //!        [feet] 8,432  [bb] 76    <- left / right field slots, grey, small vector icons (D-39)
 //!             [heart] 62          <- bottom slot (the block moves up so it stays centred)
 //!
-//! Active mode: filled digits. Always-on mode on AMOLED (DECISIONS.md D-19, D-36): exactly the same fonts and layout,
-//! but the digits and colon are drawn as outlines only, date/fields in a dimmer grey, the block is shifted every
-//! minute and a rotating row mask turns every pixel off at least once every 3 minutes.
-//! Battery (D-21): settings, fonts, layout and texts are cached; the fields are read once per minute and only while
-//! shown; no timers, no partial updates, no background, no sensors switched on. Only the chosen time font is kept
-//! loaded. Icons (D-28, D-34, D-39) are Dc primitives, no bitmaps.
+//! Active mode: filled digits. Always-on mode on AMOLED (DECISIONS.md D-19, D-36, D-43): exactly the same fonts and
+//! layout, but the digits and colon are drawn as outlines only in a dimmed (70 %) version of their colour, date/fields
+//! in a dimmer grey, the block moves 4 px every minute and a rotating row mask turns every pixel off at least once
+//! every 3 minutes. Display off (API 5.0.0): nothing is drawn.
+//! Battery (D-21, D-43): settings, fonts, layout and texts are cached; the fields are read once per minute and only
+//! while shown (heart rate, when shown, also every second in high power so it stays live after a wrist raise); no
+//! timers, no partial updates, no background, no sensors switched on. Only the chosen time font is kept loaded.
+//! Icons (D-28, D-34, D-39) are Dc primitives, no bitmaps.
 class NoirTimeView extends WatchUi.WatchFace {
 
     private var _inLowPower as Boolean = false;
@@ -40,6 +42,25 @@ class NoirTimeView extends WatchUi.WatchFace {
     private var _colonDot as Number = 0;
     private var _colonOffset as Number = 0;
     private var _outline as Number = 0;
+    // Resolved settings (D-43): copied from NoirSettings only when its generation changes, so a frame does no
+    // property look-ups, string compares or colour maths.
+    private var _settingsGen as Number = -1;
+    private var _size as Number = 0;
+    private var _left as Number = 0;
+    private var _right as Number = 0;
+    private var _bottom as Number = 0;
+    private var _hourColor as Number = 0;
+    private var _minuteColor as Number = 0;
+    private var _colonColor as Number = 0;
+    private var _hourColorAod as Number = 0;
+    private var _minuteColorAod as Number = 0;
+    private var _colonColorAod as Number = 0;
+    // True when one slot shows the heart rate (re-read every frame in high power, D-43).
+    private var _hrShown as Boolean = false;
+    private var _hrDirty as Boolean = false;
+    // Always-on shift of the current minute (two Numbers, no per-frame array, D-43).
+    private var _aodDx as Number = 0;
+    private var _aodDy as Number = 0;
     // Field rows: row 1 = left + right slot (or the bottom slot alone when both are empty), row 2 = bottom slot.
     private var _row1 as Array<Number> = [] as Array<Number>;
     private var _row2 as Array<Number> = [] as Array<Number>;
@@ -74,33 +95,40 @@ class NoirTimeView extends WatchUi.WatchFace {
         NoirSettings.reload();
         _minuteOfDay = -1;   // also picks up a 12/24 h change made in the system settings
         _fieldsMinute = -1;
+        _layoutKey = -1;     // the date font depends on the system language (chooseDateFont), which may have changed
     }
 
     function onUpdate(dc as Dc) as Void {
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         dc.clear();
+        var power = powerState();
+        if (power == NoirLayout.POWER_OFF) {
+            // System.DISPLAY_MODE_OFF (API 5.0.0, "Display is off"): render nothing, as in the AMOLED FAQ example.
+            return;
+        }
         if (dc has :setAntiAlias) {
             dc.setAntiAlias(true);
         }
 
-        // Unsupported fields come back as NONE (D-39).
-        updateLayout(dc, NoirSettings.timeSize(), NoirSettings.field(NoirSettings.KEY_FIELD_LEFT),
-            NoirSettings.field(NoirSettings.KEY_FIELD_RIGHT), NoirSettings.field(NoirSettings.KEY_FIELD_BOTTOM));
+        updateSettings();
+        updateLayout(dc, _size, _left, _right, _bottom);
         var clock = System.getClockTime();
-        updateTexts(clock);
+        updateTexts(clock, power == NoirLayout.POWER_HIGH);
 
         // Burn-in style only where the screen needs it (D-36); on MIP low power looks like active mode.
-        var lowPower = _burnIn && isLowPower();
-        var hourColor = NoirSettings.hourColor();
-        var minuteColor = NoirSettings.minuteColor();
-        var colonColor = NoirLayout.colonColor(hourColor, minuteColor);
+        var lowPower = _burnIn && power == NoirLayout.POWER_LOW;
+        var hourColor = _hourColor;
+        var minuteColor = _minuteColor;
+        var colonColor = _colonColor;
         var textColor = NoirLayout.COLOR_TEXT;
         var centerX = dc.getWidth() / 2;
         var centerY = dc.getHeight() / 2 - _shift;
         if (lowPower) {
-            var shift = NoirLayout.aodShift(clock.min);
-            centerX += shift[0];
-            centerY += shift[1];
+            centerX += _aodDx;
+            centerY += _aodDy;
+            hourColor = _hourColorAod;
+            minuteColor = _minuteColorAod;
+            colonColor = _colonColorAod;
             textColor = NoirLayout.COLOR_TEXT_AOD;
         }
 
@@ -134,6 +162,11 @@ class NoirTimeView extends WatchUi.WatchFace {
             measureFields(dc, _row1);
             measureFields(dc, _row2);
             _widthsValid = true;
+            _hrDirty = false;
+        } else if (_hrDirty) {
+            // Only the heart rate text changed (high power, D-43): re-measure that one field.
+            measureField(dc, NoirFields.HEART_RATE);
+            _hrDirty = false;
         }
         if (_row1.size() > 0) {
             drawRow(dc, centerX, rowY, _row1, textColor);
@@ -148,7 +181,8 @@ class NoirTimeView extends WatchUi.WatchFace {
     }
 
     //! "[icon] text  [icon] text" centred on centerX. Colour is already set (grey / dim grey in always-on).
-    //! Uses the cached _fieldWidths (measureFields): no allocation and no text measuring per frame.
+    //! Uses the cached _fieldWidths (measureFields): no width array and no text measuring per frame. The icons
+    //! (drawIcon) still build their small fillPolygon point arrays each frame (docs/battery-report.md section 3).
     private function drawRow(dc as Dc, centerX as Number, y as Number, fields as Array<Number>, color as Number) as Void {
         var h = _rowHeight;
         var x = centerX - NoirLayout.rowWidth(h, _fieldWidths[fields[0]] as Number,
@@ -169,9 +203,12 @@ class NoirTimeView extends WatchUi.WatchFace {
     //! Measures the shown fields once after their texts changed (getTextWidthInPixels, API 1.0.0).
     private function measureFields(dc as Dc, fields as Array<Number>) as Void {
         for (var i = 0; i < fields.size(); i++) {
-            _fieldWidths[fields[i]] = NoirLayout.fieldWidth(fields[i], _rowHeight,
-                dc.getTextWidthInPixels(textOf(fields[i]), _rowFont));
+            measureField(dc, fields[i]);
         }
+    }
+
+    private function measureField(dc as Dc, field as Number) as Void {
+        _fieldWidths[field] = NoirLayout.fieldWidth(field, _rowHeight, dc.getTextWidthInPixels(textOf(field), _rowFont));
     }
 
     private function textOf(field as Number) as String {
@@ -361,6 +398,7 @@ class NoirTimeView extends WatchUi.WatchFace {
         }
         _layoutKey = key;
         _fieldsMinute = -1;
+        _hrShown = left == NoirFields.HEART_RATE || right == NoirFields.HEART_RATE || bottom == NoirFields.HEART_RATE;
         if (left == NoirFields.NONE && right == NoirFields.NONE) {
             _row1 = bottom == NoirFields.NONE ? [] as Array<Number> : [bottom];
             _row2 = [] as Array<Number>;
@@ -469,12 +507,39 @@ class NoirTimeView extends WatchUi.WatchFace {
         return NoirLayout.rowWidth(height, widths[0], widths[1]);
     }
 
-    //! Date, hour and minute texts: rebuilt once per minute. Shown fields: read once per minute (and after a settings
-    //! or layout change); fields that are not shown are not read at all.
-    private function updateTexts(clock as System.ClockTime) as Void {
+    //! Copies the settings into the view's own fields when NoirSettings was reloaded (generation changed). Unsupported
+    //! fields come back as NONE (D-39). The always-on colours are derived here once, not per frame.
+    private function updateSettings() as Void {
+        var gen = NoirSettings.generation();
+        if (gen == _settingsGen) {
+            return;
+        }
+        _settingsGen = gen;
+        _size = NoirSettings.timeSize();
+        _left = NoirSettings.field(NoirSettings.KEY_FIELD_LEFT);
+        _right = NoirSettings.field(NoirSettings.KEY_FIELD_RIGHT);
+        _bottom = NoirSettings.field(NoirSettings.KEY_FIELD_BOTTOM);
+        _hourColor = NoirSettings.hourColor();
+        _minuteColor = NoirSettings.minuteColor();
+        _colonColor = NoirLayout.colonColor(_hourColor, _minuteColor);
+        _hourColorAod = NoirLayout.dimColor(_hourColor);
+        _minuteColorAod = NoirLayout.dimColor(_minuteColor);
+        _colonColorAod = NoirLayout.dimColor(_colonColor);
+        _fieldsMinute = -1;
+    }
+
+    //! Date, hour and minute texts and the always-on shift: rebuilt once per minute. Shown fields: read once per minute
+    //! (and after a settings or layout change); fields that are not shown are not read at all. In high power (the
+    //! system calls onUpdate every second for about 10 s after a wrist raise, WatchFace doc) a shown heart rate is
+    //! re-read every frame so it stays live; every other field stays per-minute (D-43).
+    private function updateTexts(clock as System.ClockTime, highPower as Boolean) as Void {
         var minuteOfDay = clock.hour * 60 + clock.min;
         if (minuteOfDay != _minuteOfDay) {
             _minuteOfDay = minuteOfDay;
+            // Indexed by the minute of the day, not clock.min: 1440 is a multiple of the 8-step path, 60 is not
+            // (clock.min would jump 8 px at every full hour).
+            _aodDx = NoirLayout.aodShiftX(minuteOfDay);
+            _aodDy = NoirLayout.aodShiftY(minuteOfDay);
             var info = Gregorian.info(Time.now(), Time.FORMAT_MEDIUM);
             _dateText = Lang.format("$1$ $2$ $3$", [info.day_of_week, info.day, info.month]);
             if (_upperDate) {
@@ -488,6 +553,12 @@ class NoirTimeView extends WatchUi.WatchFace {
             readFields(_row1);
             readFields(_row2);
             _widthsValid = false;
+        } else if (highPower && _hrShown) {
+            var hr = NoirFields.text(NoirFields.HEART_RATE);
+            if (!hr.equals(_fieldTexts[NoirFields.HEART_RATE])) {
+                _fieldTexts[NoirFields.HEART_RATE] = hr;
+                _hrDirty = true;
+            }
         }
     }
 
@@ -508,20 +579,25 @@ class NoirTimeView extends WatchUi.WatchFace {
         WatchUi.requestUpdate();
     }
 
-    //! True when the watch is in always-on / low power mode.
+    //! Display state: System.getDisplayMode (API 5.0.0: DISPLAY_MODE_HIGH_POWER / LOW_POWER / OFF) where the device
+    //! has it, else the onEnterSleep / onExitSleep state (D-36, D-43).
     (:ciq4)
-    private function isLowPower() as Boolean {
+    private function powerState() as Number {
         if (System has :getDisplayMode) {
-            return System.getDisplayMode() == System.DISPLAY_MODE_LOW_POWER;
+            var mode = System.getDisplayMode();
+            if (mode == System.DISPLAY_MODE_OFF) {
+                return NoirLayout.POWER_OFF;
+            }
+            return mode == System.DISPLAY_MODE_LOW_POWER ? NoirLayout.POWER_LOW : NoirLayout.POWER_HIGH;
         }
-        return _inLowPower;
+        return _inLowPower ? NoirLayout.POWER_LOW : NoirLayout.POWER_HIGH;
     }
 
     //! API 3.x devices (D-36): System.getDisplayMode (API 5.0.0) is unknown to the compiler there; use the
     //! onEnterSleep / onExitSleep state.
     (:ciq3)
-    private function isLowPower() as Boolean {
-        return _inLowPower;
+    private function powerState() as Number {
+        return _inLowPower ? NoirLayout.POWER_LOW : NoirLayout.POWER_HIGH;
     }
 
 }

@@ -172,10 +172,22 @@ def block_fits(screen, time_line, time_w, pad, date_h, date_w, row_h, row1_w, ro
             and (row2_w <= 0 or inside_circle(radius, mc_div(row2_w, 2), row1_bottom + sp + row_h)))
 
 
+def aod_shift_x(minute):
+    return L["AOD_PATH_X"][minute % len(L["AOD_PATH_X"])] * L["AOD_SHIFT_PIXELS"]
+
+
+def aod_shift_y(minute):
+    return L["AOD_PATH_Y"][minute % len(L["AOD_PATH_Y"])] * L["AOD_SHIFT_PIXELS"]
+
+
 def aod_shift(minute):
-    p = minute % 4
-    s = L["AOD_SHIFT_PIXELS"]
-    return (-s if p in (0, 3) else s, -s if p < 2 else s)
+    return aod_shift_x(minute), aod_shift_y(minute)
+
+
+def dim_color(color):
+    p = L["AOD_DIGIT_PERCENT"]
+    r, g, b = (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF
+    return (mc_div(r * p, 100) << 16) | (mc_div(g * p, 100) << 8) | mc_div(b * p, 100)
 
 
 def mask_first_row(top, minute):
@@ -479,9 +491,10 @@ def render(size, hour_color, minute_color, low_power, hour=10, minute=8, date="F
     text_c = L["COLOR_TEXT"]
     colon_c = colon_color(hour_color, minute_color)
     if low_power:
-        dx, dy = aod_shift(minute)
+        dx, dy = aod_shift(hour * 60 + minute)   # minute of the day, as NoirTimeView.updateTexts
         cx, cy = cx + dx, cy + dy
         text_c = L["COLOR_TEXT_AOD"]
+        hour_color, minute_color, colon_c = dim_color(hour_color), dim_color(minute_color), dim_color(colon_c)
     line = tf.height
     dh = digit_height(line)
     gap, dot, off, ow = colon_gap(dh), colon_dot(dh), colon_offset(dh), outline_width(line)
@@ -536,8 +549,10 @@ def screen_pixels():
 
 
 def lit_fraction(arr):
-    """'a pixel is considered on when rendering any color other than black' (AMOLED FAQ); share of ALL
-    454x454 pixels (the rule says 'screen pixels'), and of the round visible area."""
+    """'a pixel is considered on when rendering any color other than black' (AMOLED FAQ). Returns (share of the
+    454 x 454 square, share of the round visible area). Neither the FAQ ("10% of the screen pixels") nor
+    DeviceSettings.requiresBurnInProtection ("ten-percent of the total available screen pixels") defines the
+    denominator for a round screen, so the reports and limits use the CIRCLE value, the conservative one (D-43)."""
     lit = int((arr.max(axis=2) > 0).sum())
     return lit / (SCREEN * SCREEN), lit / screen_pixels()
 
@@ -551,7 +566,8 @@ def luminance_fraction(arr):
 def burn_in_run(size, hour_color, minute_color, start_minute, minutes, left=None, right=None, bottom=None,
                 texts=None):
     """Simulates `minutes` consecutive always-on updates (one per minute, as documented for low power) and
-    returns (max lit fraction, max luminance fraction, longest run of consecutive minutes any pixel stayed on)."""
+    returns (max lit fraction of the round screen, max luminance fraction, longest run of consecutive minutes any
+    pixel stayed on)."""
     lay = choose_layout(size, left, right, bottom)
     run = np.zeros((SCREEN, SCREEN), dtype=np.int32)
     longest, max_lit, max_lum = 0, 0.0, 0.0
@@ -561,6 +577,6 @@ def burn_in_run(size, hour_color, minute_color, start_minute, minutes, left=None
         on = arr.max(axis=2) > 0
         run = np.where(on, run + 1, 0)
         longest = max(longest, int(run.max()))
-        max_lit = max(max_lit, lit_fraction(arr)[0])
+        max_lit = max(max_lit, lit_fraction(arr)[1])   # per circle (conservative, D-43)
         max_lum = max(max_lum, luminance_fraction(arr))
     return max_lit, max_lum, longest

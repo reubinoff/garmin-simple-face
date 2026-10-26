@@ -26,12 +26,28 @@ def time_row(arr, lay):
     return out
 
 
-def unshift(arr, minute):
-    dx, dy = m.aod_shift(minute)
+def unshift(arr, minute, hour=10):
+    dx, dy = m.aod_shift(hour * 60 + minute)   # render() default hour is 10
     return np.roll(np.roll(arr, -dy, axis=0), -dx, axis=1)
 
 
 class BurnInTest(unittest.TestCase):
+    def test_metric_is_per_circle(self):
+        # D-43: the limits are checked against the pixels of the ROUND screen, not the 454 x 454 square.
+        yy, xx = np.ogrid[:m.SCREEN, :m.SCREEN]
+        disc = (xx - m.SCREEN / 2 + 0.5) ** 2 + (yy - m.SCREEN / 2 + 0.5) ** 2 <= (m.SCREEN / 2) ** 2
+        arr = np.zeros((m.SCREEN, m.SCREEN, 3), dtype=np.uint8)
+        arr[disc] = 255
+        square, circle = m.lit_fraction(arr)
+        self.assertAlmostEqual(circle, 1.0)
+        self.assertAlmostEqual(square, np.pi / 4, delta=0.005)
+        # burn_in_run reports the circle value (the larger, conservative one).
+        lay = m.choose_layout(m.SIZES[1], None, None, None)
+        frame = m.render(m.SIZES[1], WHITE, WHITE, True, hour=0, minute=0, layout=lay)
+        lit, _, _ = m.burn_in_run(m.SIZES[1], WHITE, WHITE, 0, 1)
+        self.assertAlmostEqual(lit, m.lit_fraction(frame)[1], places=6)
+        self.assertGreater(m.lit_fraction(frame)[1], m.lit_fraction(frame)[0])
+
     def test_limits_every_size(self):
         # 40 minutes across an hour change (all minute digits + hour digit change), brightest colours.
         for size in m.SIZES:

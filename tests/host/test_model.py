@@ -22,6 +22,7 @@ PORT = {
     "NoirLayout.maskFirstRow": m.mask_first_row, "NoirLayout.iconHeight": m.icon_height,
     "NoirLayout.iconWidth": m.icon_width, "NoirLayout.iconGap": m.icon_gap, "NoirLayout.groupGap": m.group_gap,
     "NoirLayout.fieldWidth": m.field_width, "NoirLayout.rowWidth": m.row_width,
+    "NoirLayout.aodShiftX": m.aod_shift_x, "NoirLayout.aodShiftY": m.aod_shift_y, "NoirLayout.dimColor": m.dim_color,
     "NoirFormat.thousands": m.thousands, "NoirFormat.number": m.number, "NoirFormat.percent": m.percent,
     "NoirFormat.days": m.days, "NoirFormat.temperature": m.temperature, "NoirFormat.distance": m.distance,
 }
@@ -67,6 +68,11 @@ class PortParityTest(unittest.TestCase):
         for eq, neg, fn, args, expected in pattern.findall(TESTS_MC):
             if fn not in PORT:
                 continue
+            # Calls on loop variables (e.g. aodShiftX(m + 8)) are covered by the dedicated port tests.
+            if re.search(r"\b[a-z]\w*\b", re.sub(r"Noir\w+\.\w+|true|false|null|0x[0-9A-Fa-f]+", "", args + " " + expected)) \
+                    and not all(re.fullmatch(r"\w+", v) and v in LOCALS for v in re.findall(r"\b[a-z]\w*\b",
+                    re.sub(r"Noir\w+\.\w+|true|false|null|0x[0-9A-Fa-f]+", "", args + " " + expected))):
+                continue
             value = PORT[fn](*mc_value("(" + args + ",)"))
             if eq:
                 self.assertEqual(value, mc_value(expected), f"{fn}({args})")
@@ -80,11 +86,38 @@ class PortParityTest(unittest.TestCase):
         self.assertEqual(m.mc_div(7, 2), 3)
 
     def test_aod_shift_cycle(self):
+        """D-43: 4 px (Garmin UX guidelines, Watch Faces: "moving elements up to four pixels in any direction every
+        minute"); each minute moves exactly 4 px on one axis; offsets stay within +-4 px; 8 distinct positions."""
         s = m.L["AOD_SHIFT_PIXELS"]
-        for minute in range(120):
+        self.assertEqual(s, 4)
+        seen = set()
+        for minute in range(240):
             a, b = m.aod_shift(minute), m.aod_shift(minute + 1)
-            self.assertEqual(sum(abs(a[i] - b[i]) == 2 * s for i in (0, 1)), 1)
+            self.assertTrue(abs(a[0]) <= s and abs(a[1]) <= s)
+            self.assertEqual(sorted((abs(a[0] - b[0]), abs(a[1] - b[1]))), [0, s])
+            seen.add(a)
+        self.assertEqual(len(seen), 8)
         self.assertGreaterEqual(m.L["EDGE_MARGIN"], s + m.L["OUTLINE_MAX"])
+        # Over a real clock day (minute of the day, incl. every full hour and midnight) no step exceeds 4 px.
+        for t in range(1440):
+            a, b = m.aod_shift(t), m.aod_shift((t + 1) % 1440)
+            self.assertEqual(sorted((abs(a[0] - b[0]), abs(a[1] - b[1]))), [0, s], t)
+
+    def test_view_passes_minute_of_day(self):
+        """Regression: clock.min (60 % 8 != 0) made the always-on block jump 8 px at every full hour."""
+        src = open(os.path.join(m.ROOT, "source", "NoirTimeView.mc"), encoding="utf-8").read()
+        self.assertIn("aodShiftX(minuteOfDay)", src)
+        self.assertIn("aodShiftY(minuteOfDay)", src)
+        self.assertNotIn("aodShiftX(clock.min)", src)
+
+    def test_aod_digits_dimmed(self):
+        """D-43: always-on digits use 70 % of the chosen colour (UX guidelines: light grey instead of white / blue)."""
+        self.assertEqual(m.L["AOD_DIGIT_PERCENT"], 70)
+        self.assertEqual(m.dim_color(0xFFFFFF), 0xB2B2B2)
+        for c in m.color_values():
+            d = m.dim_color(c)
+            for shift in (16, 8, 0):
+                self.assertLessEqual((d >> shift) & 0xFF, 0xB2)
 
     def test_row_mask_turns_every_row_off_once_per_period(self):
         p = m.L["AOD_MASK_PERIOD"]

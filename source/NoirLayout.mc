@@ -13,8 +13,20 @@ module NoirLayout {
     const COLOR_TEXT_AOD = 0x6E6E6E;
     // Vertical gap between the rows, percent of the screen height.
     const ROW_SPACING_PERCENT = 3;
-    // Always-on burn-in shift (pixels, each axis) - see aodShift().
-    const AOD_SHIFT_PIXELS = 8;
+    // Always-on burn-in shift (pixels): the block walks round an 8-step path whose offsets stay within
+    // +-AOD_SHIFT_PIXELS on each axis and which moves exactly AOD_SHIFT_PIXELS on one axis per minute - see
+    // aodShiftX() / aodShiftY(). Garmin UX guidelines, Watch Faces, Best Practices: "consider moving elements up to
+    // four pixels in any direction every minute while in always-on mode" (D-19, D-43).
+    const AOD_SHIFT_PIXELS = 4;
+    const AOD_PATH_X = [-1, 0, 1, 1, 1, 0, -1, -1] as Array<Number>;
+    const AOD_PATH_Y = [-1, -1, -1, 0, 1, 1, 1, 0] as Array<Number>;
+    // Always-on digit / colon colour = the user's colour with every channel scaled to this percent (UX guidelines:
+    // "Avoid using much white or blue. Consider using light gray instead."; white becomes 0xB2B2B2). D-43.
+    const AOD_DIGIT_PERCENT = 70;
+    // Display state used by the view (System.getDisplayMode, API 5.0.0, where available: HIGH_POWER / LOW_POWER / OFF).
+    const POWER_HIGH = 0;
+    const POWER_LOW = 1;
+    const POWER_OFF = 2;
     // Outline stroke for the always-on digits (pixels), see outlineWidth().
     const OUTLINE_MIN = 2;
     const OUTLINE_MAX = 3;
@@ -232,13 +244,24 @@ module NoirLayout {
             && (row2Width <= 0 || insideCircle(radius, row2Width / 2, row1Bottom + spacing + rowHeight));
     }
 
-    //! Always-on shift for a given minute: a 4-step square cycle (-,-) (+,-) (+,+) (-,+) times AOD_SHIFT_PIXELS.
-    //! Consecutive minutes are 2 * AOD_SHIFT_PIXELS apart on one axis.
-    function aodShift(minute as Number) as Array<Number> {
-        var phase = minute % 4;
-        var dx = (phase == 0 || phase == 3) ? -AOD_SHIFT_PIXELS : AOD_SHIFT_PIXELS;
-        var dy = (phase < 2) ? -AOD_SHIFT_PIXELS : AOD_SHIFT_PIXELS;
-        return [dx, dy];
+    //! Always-on shift for a minute of the DAY (hour * 60 + min, 0..1439), x and y separately so nothing is allocated
+    //! per frame: an 8-step walk (-,-) (0,-) (+,-) (+,0) (+,+) (0,+) (-,+) (-,0) times AOD_SHIFT_PIXELS. Consecutive
+    //! minutes, including 23:59 -> 00:00 (1440 % 8 == 0), are exactly AOD_SHIFT_PIXELS apart on exactly one axis.
+    //! Do not pass clock.min: 60 % 8 != 0, so the walk would jump at every full hour.
+    function aodShiftX(minuteOfDay as Number) as Number {
+        return AOD_PATH_X[minuteOfDay % AOD_PATH_X.size()] * AOD_SHIFT_PIXELS;
+    }
+
+    function aodShiftY(minuteOfDay as Number) as Number {
+        return AOD_PATH_Y[minuteOfDay % AOD_PATH_Y.size()] * AOD_SHIFT_PIXELS;
+    }
+
+    //! Always-on colour: each 0xRRGGBB channel scaled to AOD_DIGIT_PERCENT (rounded down).
+    function dimColor(color as Number) as Number {
+        var r = ((color >> 16) & 0xFF) * AOD_DIGIT_PERCENT / 100;
+        var g = ((color >> 8) & 0xFF) * AOD_DIGIT_PERCENT / 100;
+        var b = (color & 0xFF) * AOD_DIGIT_PERCENT / 100;
+        return (r << 16) | (g << 8) | b;
     }
 
     //! First screen row >= top that the always-on mask blacks out in the given minute

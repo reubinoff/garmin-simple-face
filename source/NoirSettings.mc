@@ -38,6 +38,9 @@ module NoirSettings {
     var _fieldLeft as Number = DEFAULT_FIELD_LEFT;
     var _fieldRight as Number = DEFAULT_FIELD_RIGHT;
     var _fieldBottom as Number = DEFAULT_FIELD_BOTTOM;
+    // Bumped by every reload(), so the view can keep its own resolved copy of the settings and re-read them only
+    // when they changed (one Number compare per frame instead of three field() look-ups, D-43).
+    var _generation as Number = 0;
 
     //! The 16 time colours (24-bit 0xRRGGBB as Dc.setColor takes them), same order and values as the lists in settings.xml.
     function colorValues() as Array<Number> {
@@ -94,6 +97,13 @@ module NoirSettings {
         _hourColor = parseColor(Application.Properties.getValue(KEY_HOUR_COLOR));
         _minuteColor = parseColor(Application.Properties.getValue(KEY_MINUTE_COLOR));
         _loaded = true;
+        _generation += 1;
+    }
+
+    //! Changes after every reload(); never 0 once loaded.
+    function generation() as Number {
+        ensureLoaded();
+        return _generation;
     }
 
     function ensureLoaded() as Void {

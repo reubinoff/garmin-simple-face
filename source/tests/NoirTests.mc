@@ -198,21 +198,39 @@ function testOutlineWidth(logger as Logger) as Boolean {
     return true;
 }
 
-//! Burn-in shift: 4-step cycle, every consecutive pair differs by 2 * shift on exactly one axis,
-//! and the edge margin covers shift + outline.
+//! Burn-in shift (D-43): 8-step walk, offsets within +-shift on each axis, every consecutive pair moves exactly
+//! `shift` pixels on exactly one axis (Garmin UX guidelines: up to four pixels per minute), shift is 4, and the edge
+//! margin covers shift + outline.
 (:test)
 function testAodShift(logger as Logger) as Boolean {
     var s = NoirLayout.AOD_SHIFT_PIXELS;
-    for (var m = 0; m < 60; m++) {
-        var a = NoirLayout.aodShift(m);
-        var b = NoirLayout.aodShift(m + 1);
-        Test.assert((a[0] == s || a[0] == -s) && (a[1] == s || a[1] == -s));
-        var moved = ((a[0] - b[0]).abs() == 2 * s ? 1 : 0) + ((a[1] - b[1]).abs() == 2 * s ? 1 : 0);
-        Test.assertEqual(moved, 1);
-        var c = NoirLayout.aodShift(m + 4);
-        Test.assert(a[0] == c[0] && a[1] == c[1]);
+    Test.assertEqual(s, 4);
+    for (var m = 0; m < 120; m++) {
+        var ax = NoirLayout.aodShiftX(m);
+        var ay = NoirLayout.aodShiftY(m);
+        Test.assert(ax.abs() <= s && ay.abs() <= s);
+        var dx = (ax - NoirLayout.aodShiftX(m + 1)).abs();
+        var dy = (ay - NoirLayout.aodShiftY(m + 1)).abs();
+        Test.assert((dx == s && dy == 0) || (dx == 0 && dy == s));
+        Test.assertEqual(NoirLayout.aodShiftX(m + 8), ax);
+        Test.assertEqual(NoirLayout.aodShiftY(m + 8), ay);
     }
+    // Midnight wrap (the view passes the minute of the day): 23:59 -> 00:00 is also one 4 px step.
+    var wx = (NoirLayout.aodShiftX(1439) - NoirLayout.aodShiftX(0)).abs();
+    var wy = (NoirLayout.aodShiftY(1439) - NoirLayout.aodShiftY(0)).abs();
+    Test.assert((wx == s && wy == 0) || (wx == 0 && wy == s));
     Test.assert(NoirLayout.EDGE_MARGIN >= NoirLayout.AOD_SHIFT_PIXELS + NoirLayout.OUTLINE_MAX);
+    return true;
+}
+
+//! Always-on colours (D-43): every channel scaled to 70 %, so white becomes a light grey.
+(:test)
+function testDimColor(logger as Logger) as Boolean {
+    Test.assertEqual(NoirLayout.dimColor(0xFFFFFF), 0xB2B2B2);
+    Test.assertEqual(NoirLayout.dimColor(0x000000), 0x000000);
+    Test.assertEqual(NoirLayout.dimColor(0x00D4FF), 0x0094B2);
+    Test.assertEqual(NoirLayout.dimColor(0xB0B0B0), 0x7B7B7B);
+    Test.assertEqual(NoirLayout.dimColor(0xFF453A), 0xB23028);
     return true;
 }
 
